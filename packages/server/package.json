@@ -1,0 +1,21 @@
+{
+  "name": "@pos/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=../../.env --no-warnings=ExperimentalWarning src/index.ts",
+    "start": "node --env-file-if-exists=../../.env --no-warnings=ExperimentalWarning src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --no-warnings=ExperimentalWarning src/**/*.test.ts"
+  },
+  "dependencies": {
+    "@pos/shared": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.6.3"
+  }
+}

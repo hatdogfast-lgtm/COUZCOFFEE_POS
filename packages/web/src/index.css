@@ -1,0 +1,254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Design tokens.
+ *
+ * Colours are stored as raw RGB channels so Tailwind can apply opacity to
+ * them, and every one of them is a variable so the owner's brand settings can
+ * repaint the whole application at runtime. The brand entries below are
+ * defaults only - Settings overwrites them on the root element at startup.
+ */
+@layer base {
+  :root {
+    --canvas: 247 247 245;
+    --surface: 255 255 255;
+    --surface-raised: 255 255 255;
+    --surface-sunken: 241 241 238;
+
+    --line: 227 227 222;
+    --line-strong: 208 208 201;
+
+    --ink: 24 24 27;
+    --ink-muted: 92 92 99;
+    --ink-subtle: 138 138 146;
+
+    --brand: 122 74 44;
+    --brand-ink: 255 255 255;
+    --brand-soft: 243 234 226;
+
+    --accent: 193 138 74;
+    --accent-ink: 32 22 12;
+
+    /* Chart hue. Fixed rather than following the configurable brand colour,
+     * so a pale brand choice can never make a chart unreadable. Validated
+     * against this surface: lightness band, chroma floor, and 3:1 contrast. */
+    --chart: 169 98 47;
+    --chart-track: 232 232 227;
+
+    --positive: 22 128 84;
+    --warning: 191 122 16;
+    --danger: 190 48 48;
+    --danger-ink: 255 255 255;
+
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+  }
+
+  [data-theme='dark'] {
+    --canvas: 15 17 21;
+    --surface: 22 25 31;
+    --surface-raised: 30 34 41;
+    --surface-sunken: 12 14 18;
+
+    --line: 42 47 56;
+    --line-strong: 60 67 78;
+
+    --ink: 237 238 240;
+    --ink-muted: 158 163 173;
+    --ink-subtle: 111 117 128;
+
+    --brand: 197 141 92;
+    --brand-ink: 24 16 9;
+    --brand-soft: 46 37 29;
+
+    --accent: 214 165 106;
+    --accent-ink: 26 18 8;
+
+    --chart: 190 127 62;
+    --chart-track: 38 43 52;
+
+    --positive: 61 178 122;
+    --warning: 226 160 56;
+    --danger: 232 96 96;
+    --danger-ink: 26 10 10;
+  }
+
+  * {
+    @apply border-line;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-ink antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    text-rendering: optimizeLegibility;
+    /* A till is a touch surface: never let a stray drag bounce the page. */
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Numbers in a POS must align in columns and never re-flow as they tick. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-canvas;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line-strong;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+
+  .panel {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+
+  /* Touch targets: 44px is the floor on a tablet a barista uses one-handed. */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  .press {
+    @apply transition-transform duration-100 ease-swift active:scale-[0.97];
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden bg-surface-sunken;
+  }
+  .skeleton::after {
+    @apply absolute inset-0 -translate-x-full animate-[shimmer_1.6s_infinite] bg-gradient-to-r from-transparent via-black/5 to-transparent;
+    content: '';
+  }
+}
+
+@layer utilities {
+  .pad-safe-top {
+    padding-top: var(--safe-top);
+  }
+  .pad-safe-bottom {
+    padding-bottom: var(--safe-bottom);
+  }
+  .pad-safe-x {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+  /* Momentum scrolling inside panes, without rubber-banding the whole app. */
+  .scroll-pane {
+    @apply overflow-y-auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/**
+ * Printing.
+ *
+ * Without this, every "Print" button in the app printed the app: the header,
+ * the navigation, the sheet that happened to be open. A receipt printer given
+ * that produces several feet of unreadable paper.
+ *
+ * The rule is simple - when printing, the only thing on the page is the
+ * receipt. The page itself is sized to the paper roll, so the printer driver
+ * does not scale it down to fit A4 and make it illegible.
+ */
+@media print {
+  /* Nothing but the receipt. */
+  body > *:not(#receipt-print-root) {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  #receipt-print-root {
+    display: block !important;
+    text-align: center;
+    /* Monospace, because the layout is columns of characters counted by the
+       same code that counts them for the printer. A proportional face would
+       throw every figure out of its column. */
+    font-family: 'Courier New', 'DejaVu Sans Mono', monospace;
+    font-size: 11pt;
+    line-height: 1.28;
+    white-space: pre;
+    color: #000;
+    background: #fff;
+    margin: 0;
+    padding: 2mm;
+  }
+
+  /* The logo sits above the text and never wider than the roll. */
+  #receipt-print-root .receipt-logo {
+    display: block;
+    max-width: 80%;
+    max-height: 24mm;
+    margin: 0 auto 2mm;
+    object-fit: contain;
+    /* Thermal paper is black on white: a mid-grey logo prints as mud. */
+    filter: grayscale(1) contrast(1.4);
+  }
+
+  #receipt-print-root .receipt-body {
+    margin: 0;
+    padding: 0;
+    font: inherit;
+    white-space: pre;
+    text-align: left;
+  }
+
+  /* Thermal paper is a continuous roll: the height is whatever the receipt
+     needs, and the width is the roll minus the printer's own margins. */
+  @page {
+    margin: 0;
+    size: 58mm auto;
+  }
+}
+
+/* 80mm rolls, selected in Settings. */
+@media print {
+  #receipt-print-root[data-paper='80'] {
+    font-size: 10.5pt;
+  }
+}

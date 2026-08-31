@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Point of Sale</string>
+    <string name="title_activity_main">Point of Sale</string>
+    <string name="package_name">com.pos.offlinefirst</string>
+    <string name="custom_url_scheme">com.pos.offlinefirst</string>
+</resources>

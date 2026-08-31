@@ -1,0 +1,24 @@
+{
+  "name": "coffee-pos",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/web"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev --workspace @pos/web",
+    "dev:server": "npm run dev --workspace @pos/server",
+    "build": "npm run build --workspace @pos/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "android:apk": "node scripts/build-apk.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "engines": {
+    "node": ">=22.6.0"
+  }
+}
