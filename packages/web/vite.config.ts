@@ -2,6 +2,40 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
+import { cp, rm } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * Leave a second copy of the built site at the repository root.
+ *
+ * Vite writes to packages/web/dist, which is where Capacitor picks it up, so
+ * that cannot move. Vercel looks wherever its project settings say - and a
+ * Root Directory, Framework Preset or Build Command set in its dashboard
+ * silently overrides vercel.json, which is how a build that plainly worked
+ * ends with "No Output Directory named dist found".
+ *
+ * Doing it here rather than in an npm script means it happens on any build at
+ * all, including a bare `vite build`, so no hosting configuration can miss it.
+ */
+function alsoBuildToRepoRoot() {
+  return {
+    name: 'stage-build-at-repo-root',
+    apply: 'build' as const,
+    // After every other plugin has finished writing. The service worker is
+    // generated in the PWA plugin's own closeBundle, and a copy taken before
+    // that lands is a site that cannot work offline - which is most of the
+    // point of this application.
+    enforce: 'post' as const,
+    async closeBundle() {
+      const here = path.dirname(fileURLToPath(import.meta.url))
+      const from = path.resolve(here, 'dist')
+      const to = path.resolve(here, '../../dist')
+      await rm(to, { recursive: true, force: true })
+      await cp(from, to, { recursive: true })
+      console.log('  also written to dist/ at the repository root, for hosting')
+    },
+  }
+}
 
 export default defineConfig({
   plugins: [
@@ -39,6 +73,7 @@ export default defineConfig({
       },
       devOptions: { enabled: false },
     }),
+    alsoBuildToRepoRoot(),
   ],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
