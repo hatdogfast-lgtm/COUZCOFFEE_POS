@@ -178,6 +178,7 @@ export const META_KEYS = {
   queueDate: 'queue.date',
   receiptCounter: 'receipt.counter',
   migrationsApplied: 'migrations.applied',
+  lastUpdateSentAt: 'update.lastSentAt',
 } as const
 
 /**

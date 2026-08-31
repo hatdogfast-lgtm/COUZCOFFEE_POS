@@ -11,6 +11,9 @@ import {
   restoreBackup,
   type BackupFile,
   reconcile,
+  buildUpdate,
+  problemsFor,
+  backupBlob,
 } from './backup.ts'
 
 /**
@@ -510,6 +513,96 @@ describe('catching up from another till', () => {
         const verdict = reconcile(entity, rec({ version: 1 }), rec({ version: 2 }))
         expect(['TAKE_THEIRS', 'KEEP_MINE', 'CONFLICT']).toContain(verdict)
       }
+    })
+  })
+})
+
+describe('an update file rather than a whole backup', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  test('carries only what changed after the moment given', async () => {
+    await seedShop()
+    const cutoff = Date.now()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const fresh = saleRow('OR-AFTER')
+    await commit([created('sales', fresh)])
+
+    const update = await buildUpdate('Alex', cutoff)
+    const ids = (update.tables.sales ?? []).map((row) => row.id)
+
+    expect(ids).toContain(fresh.id)
+    expect(update.manifest.partial).toBe(true)
+    expect(update.manifest.since).toBe(cutoff)
+  })
+
+  test('leaves out what the other device already had', async () => {
+    await seedShop()
+    const before = (await buildBackup('Alex')).manifest.totalRows
+    const update = await buildUpdate('Alex', Date.now() + DAY)
+
+    // Nothing has changed since tomorrow, so the file is empty of records.
+    expect(update.manifest.totalRows).toBe(0)
+    expect(before).toBeGreaterThan(0)
+  })
+
+  test('is dramatically smaller than the whole thing', async () => {
+    await seedShop()
+    for (let i = 0; i < 40; i += 1) await commit([created('sales', saleRow('OR-OLD-' + i))])
+
+    const cutoff = Date.now()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await commit([created('sales', saleRow('OR-TODAY'))])
+
+    const whole = backupBlob(await buildBackup('Alex')).size
+    const update = backupBlob(await buildUpdate('Alex', cutoff)).size
+
+    // The point of the feature: what leaves the phone is a fraction of the shop.
+    expect(update).toBeLessThan(whole / 4)
+  })
+
+  test('a full backup does not claim to be partial', async () => {
+    await seedShop()
+    const whole = await buildBackup('Alex')
+    expect(whole.manifest.partial).toBe(false)
+    expect(whole.manifest.since).toBeNull()
+  })
+
+  test('a deletion travels in an update, so removals are not lost', async () => {
+    await seedShop()
+    const doomed = saleRow('OR-DOOMED')
+    await commit([created('sales', doomed)])
+
+    const cutoff = Date.now()
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    await db.sales.update(doomed.id, { deletedAt: Date.now(), updatedAt: Date.now() })
+
+    const update = await buildUpdate('Alex', cutoff)
+    expect((update.tables.sales ?? []).some((row) => row.id === doomed.id)).toBe(true)
+  })
+
+  describe('and it refuses to be mistaken for a whole shop', () => {
+    test('replacing with an update file is refused outright', async () => {
+      await seedShop()
+      const update = await buildUpdate('Alex', 1)
+
+      const inspection = await inspectBackup(JSON.stringify(update))
+      expect(canRestore(inspection, 'REPLACE')).toBe(false)
+      expect(problemsFor(inspection, 'REPLACE').some((p) => /update file/i.test(p.message))).toBe(true)
+    })
+
+    test('but catching up with it is exactly what it is for', async () => {
+      await seedShop()
+      const update = await buildUpdate('Alex', 1)
+
+      const inspection = await inspectBackup(JSON.stringify(update))
+      expect(canRestore(inspection, 'CATCH_UP')).toBe(true)
+      expect(canRestore(inspection, 'MERGE')).toBe(true)
+    })
+
+    test('a whole backup can still replace', async () => {
+      await seedShop()
+      const inspection = await inspectBackup(JSON.stringify(await buildBackup('Alex')))
+      expect(canRestore(inspection, 'REPLACE')).toBe(true)
     })
   })
 })

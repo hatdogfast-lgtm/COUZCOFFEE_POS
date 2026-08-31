@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   CheckCircle2,
   DatabaseBackup,
   Download,
+  Share2,
   RotateCcw,
   ShieldAlert,
   TriangleAlert,
@@ -11,6 +12,9 @@ import {
 } from 'lucide-react'
 import {
   buildBackup,
+  buildUpdate,
+  lastUpdateSentAt,
+  rememberUpdateSent,
   canRestore,
   inspectBackup,
   problemsFor,
@@ -47,6 +51,11 @@ export function BackupPanel() {
   const input = useRef<HTMLInputElement>(null)
 
   const mayBackUp = can('backup.run')
+  // When this device last sent one, so the next carries on from there.
+  const [sentAt, setSentAt] = useState<number | null>(null)
+  useEffect(() => {
+    void lastUpdateSentAt().then(setSentAt)
+  }, [])
   const mayRestore = can('backup.restore')
 
   function reset(): void {
@@ -55,6 +64,37 @@ export function BackupPanel() {
     setMode('MERGE')
     setSync('RESYNC')
     if (input.current) input.current.value = ''
+  }
+
+  /**
+   * Send on what has happened since last time.
+   *
+   * The whole shop in one file grows for as long as the shop trades, and a
+   * phone that has been selling for months makes one too big to email. This is
+   * the day's work: small enough to send from a phone by any means at all.
+   */
+  async function sendUpdate(): Promise<void> {
+    if (!user || busy) return
+    setBusy(true)
+    try {
+      const since = sentAt ?? 0
+      const at = Date.now()
+      const file = await buildUpdate(user.name, since)
+
+      if (file.manifest.totalRows === 0) {
+        toast.info('Nothing has changed since the last update file.')
+        return
+      }
+
+      saveBackup(file)
+      await rememberUpdateSent(at)
+      setSentAt(at)
+      toast.success(`${file.manifest.totalRows.toLocaleString()} changes saved to a file.`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The update could not be made.')
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function download(): Promise<void> {
@@ -132,8 +172,35 @@ export function BackupPanel() {
         {mayBackUp ? (
           <section className="rounded-2xl border border-line bg-surface p-4">
             <h2 className="flex items-center gap-2 text-sm font-medium text-ink">
+              <Share2 className="h-4 w-4 text-ink-muted" aria-hidden="true" />
+              Send an update to another device
+            </h2>
+            <p className="mt-1 text-[0.8125rem] text-ink-muted">
+              Just what has happened since last time — today&rsquo;s sales, any prices you changed, staff you added.
+              Small enough to email, message or AirDrop from a phone.
+            </p>
+            <p className="mt-2 text-[0.8125rem] text-ink-subtle">
+              {sentAt
+                ? `Covers everything since ${new Date(sentAt).toLocaleString()}.`
+                : 'The first one covers everything this device holds. After that, each covers only what is new.'}
+            </p>
+            <p className="mt-2 text-[0.8125rem] text-ink-subtle">
+              On the other device, open it under <strong className="text-ink">Restore</strong> below and choose
+              <strong className="text-ink"> Catch up with another till</strong>. A device with nothing on it yet
+              needs a full backup first, not an update.
+            </p>
+            <Button className="mt-3" onClick={() => void sendUpdate()} disabled={busy}>
+              <Share2 className="h-4 w-4" aria-hidden="true" />
+              {busy ? 'Working…' : 'Save an update file'}
+            </Button>
+          </section>
+        ) : null}
+
+        {mayBackUp ? (
+          <section className="rounded-2xl border border-line bg-surface p-4">
+            <h2 className="flex items-center gap-2 text-sm font-medium text-ink">
               <DatabaseBackup className="h-4 w-4 text-ink-muted" aria-hidden="true" />
-              Make a backup
+              Make a full backup
             </h2>
             <p className="mt-1 text-[0.8125rem] text-ink-muted">
               Every sale, recipe, ingredient, staff record and setting this device holds, written to one file you

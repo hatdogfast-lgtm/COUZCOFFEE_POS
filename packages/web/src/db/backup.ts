@@ -60,6 +60,16 @@ export interface BackupManifest {
   totalRows: number
   /** SHA-256 over the canonical form of `tables`, so a truncated or edited file is caught. */
   checksum: string
+  /**
+   * Only what changed, rather than everything this device holds.
+   *
+   * A full file grows for as long as the shop trades, and a phone that has
+   * been selling for months produces one too big to email. A day's trading is
+   * a few tens of kilobytes, which goes anywhere.
+   */
+  partial?: boolean
+  /** Records changed after this moment are in the file. Null means everything. */
+  since?: number | null
 }
 
 export interface BackupFile {
@@ -107,15 +117,19 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
-export async function buildBackup(createdByName: string): Promise<BackupFile> {
+export async function buildBackup(createdByName: string, since?: number | null): Promise<BackupFile> {
   const tables: Record<string, SyncMeta[]> = {}
   const counts: Record<string, number> = {}
   let totalRows = 0
+  const partial = typeof since === 'number' && since > 0
 
   for (const entity of SYNC_ENTITIES) {
     // Tombstones are included on purpose: a deletion is a fact, and a restore
     // that dropped them would resurrect everything anyone had ever deleted.
-    const rows = (await tableFor(entity).toArray()) as unknown as SyncMeta[]
+    // A tombstone carries an updatedAt like anything else, so deletions travel
+    // in an update file too.
+    const all = (await tableFor(entity).toArray()) as unknown as SyncMeta[]
+    const rows = partial ? all.filter((row) => (row.updatedAt ?? 0) > since!) : all
     tables[entity] = rows
     counts[entity] = rows.length
     totalRows += rows.length
@@ -138,9 +152,32 @@ export async function buildBackup(createdByName: string): Promise<BackupFile> {
       counts,
       totalRows,
       checksum: await sha256(canonical(tables)),
+      partial,
+      since: partial ? since! : null,
     },
     tables,
   }
+}
+
+/**
+ * Everything that has happened since a moment, ready to hand to another device.
+ *
+ * The file is the same shape as a full one, so the receiving end reads it with
+ * the same code - it is simply smaller. What makes it safe is that it says it
+ * is partial, and a partial file is refused for a replace: writing a day's
+ * takings over a whole shop would leave that shop with nothing but the day.
+ */
+export async function buildUpdate(createdByName: string, since: number): Promise<BackupFile> {
+  return buildBackup(createdByName, since)
+}
+
+/** When this device last produced an update file, so the next one carries on from there. */
+export async function lastUpdateSentAt(): Promise<number | null> {
+  return readMeta<number | null>(META_KEYS.lastUpdateSentAt, null)
+}
+
+export async function rememberUpdateSent(at: number): Promise<void> {
+  await writeMeta(META_KEYS.lastUpdateSentAt, at)
 }
 
 export function backupBlob(file: BackupFile): Blob {
@@ -270,6 +307,21 @@ export async function inspectBackup(input: File | string): Promise<BackupInspect
 
   // Replacing everything with a file that cannot produce a working till would
   // leave nobody able to sign in and no way back through the interface.
+  // An update file holds a slice of time, not a shop. Replacing everything
+  // with one would leave the device holding a few days of sales and nothing
+  // to put them against. The existing no-settings check catches most of these
+  // by accident; this catches the one that happens to carry a settings edit.
+  if (file.manifest.partial === true) {
+    problems.push({
+      severity: 'FATAL',
+      replaceOnly: true,
+      message:
+        'This is an update file covering ' +
+        (file.manifest.since ? 'changes since ' + new Date(file.manifest.since).toLocaleString() : 'part of the record') +
+        ', not a whole shop. Catch up with it instead of replacing.',
+    })
+  }
+
   const liveSettings = (file.tables.settings ?? []).filter((row) => row?.deletedAt === null)
   const liveUsers = (file.tables.users ?? []).filter(
     (row) => row?.deletedAt === null && (row as unknown as User).active,
