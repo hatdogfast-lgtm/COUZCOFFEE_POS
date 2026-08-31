@@ -264,6 +264,12 @@ export function BackupPanel() {
                   detail={`Writes only the ${inspection.totalNewHere.toLocaleString()} records this device has never seen. Nothing already here is touched or overwritten.`}
                 />
                 <Choice
+                  active={mode === 'CATCH_UP'}
+                  onClick={() => setMode('CATCH_UP')}
+                  title="Catch up with another till"
+                  detail="Brings in everything the other device did, and lets its later changes to prices, staff and settings win. Sales are never overwritten. Use this to keep two tills in step by passing a file between them."
+                />
+                <Choice
                   active={mode === 'REPLACE'}
                   onClick={() => setMode('REPLACE')}
                   title="Replace everything"
@@ -336,7 +342,9 @@ export function BackupPanel() {
                     ? 'Restoring…'
                     : mode === 'REPLACE'
                       ? 'Replace everything on this device'
-                      : `Add ${inspection.totalNewHere.toLocaleString()} missing records`}
+                      : mode === 'CATCH_UP'
+                        ? 'Catch this device up'
+                        : `Add ${inspection.totalNewHere.toLocaleString()} missing records`}
                 </Button>
               </div>
 

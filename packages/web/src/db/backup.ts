@@ -1,4 +1,13 @@
-import { newId, SYNC_ENTITIES, type AuditLog, type SyncEntity, type SyncMeta, type User } from '@pos/shared'
+import {
+  CONFLICT_POLICIES,
+  newId,
+  SYNC_ENTITIES,
+  type AuditLog,
+  type SyncConflictRecord,
+  type SyncEntity,
+  type SyncMeta,
+  type User,
+} from '@pos/shared'
 import type { BusinessSettings, OutboxEntry, Sale } from '@pos/shared'
 import { clearBusinessData, db, META_KEYS, readMeta, tableFor, writeMeta } from './database.ts'
 import { identity } from './identity.ts'
@@ -58,7 +67,7 @@ export interface BackupFile {
   tables: Record<string, SyncMeta[]>
 }
 
-export type RestoreMode = 'REPLACE' | 'MERGE'
+export type RestoreMode = 'REPLACE' | 'MERGE' | 'CATCH_UP'
 
 /**
  * What should happen with the server afterwards.
@@ -392,7 +401,12 @@ async function recomputeCounters(settings: BusinessSettings | undefined): Promis
  * overwrites nothing, which is what you want when one thing was deleted by
  * mistake rather than when a device has been lost.
  *
- * Neither touches this device's identity.
+ * CATCH_UP is the two tills swapping notes: it brings in what the other one
+ * did and lets its later edits win, using exactly the rules the server sync
+ * uses. It is how a shop keeps two devices in step with a file on a memory
+ * stick when there is no server between them.
+ *
+ * None of them touch this device's identity.
  */
 export async function restoreBackup(input: {
   inspection: BackupInspection
@@ -417,6 +431,7 @@ export async function restoreBackup(input: {
   let written = 0
   let skipped = 0
   let queued = 0
+  const conflicts: SyncConflictRecord[] = []
 
   if (mode === 'REPLACE') {
     await clearBusinessData()
@@ -442,6 +457,42 @@ export async function restoreBackup(input: {
         skipped += rows.length - toWrite.length
       }
 
+      if (mode === 'CATCH_UP') {
+        const mine = new Map(
+          ((await table.toArray()) as unknown as SyncMeta[]).map((row) => [row.id, row]),
+        )
+        const keep: typeof rows = []
+
+        for (const row of rows) {
+          const local = mine.get(row.id)
+          if (!local) {
+            keep.push(row)
+            continue
+          }
+
+          const verdict = reconcile(entity, local, row as unknown as SyncMeta)
+          if (verdict === 'TAKE_THEIRS') keep.push(row)
+          else if (verdict === 'CONFLICT') {
+            conflicts.push({
+              id: newId(now),
+              entity,
+              entityId: row.id,
+              localPayload: local,
+              serverPayload: row,
+              localVersion: local.version ?? 0,
+              serverVersion: (row as unknown as SyncMeta).version ?? 0,
+              detectedAt: now,
+              resolvedAt: null,
+              resolution: null,
+              resolvedBy: null,
+            })
+            skipped += 1
+          } else skipped += 1
+        }
+
+        toWrite = keep
+      }
+
       if (toWrite.length > 0) {
         await table.bulkPut(toWrite as unknown as Array<{ id: string }>)
         written += toWrite.length
@@ -452,6 +503,10 @@ export async function restoreBackup(input: {
       }
     })
   }
+
+  // Anything the two devices disagreed about is parked for a person to settle,
+  // never guessed at. The sync screen already knows how to show these.
+  if (conflicts.length > 0) await db.conflicts.bulkPut(conflicts)
 
   const settings = ((await db.settings.toArray()) as BusinessSettings[]).find(
     (row) => row.deletedAt === null,
@@ -520,4 +575,51 @@ export async function restoreBackup(input: {
   )
 
   return { mode, written, skipped, queuedForServer: queued, nextReceiptNumber }
+}
+
+/**
+ * Which of two versions of the same record should stand.
+ *
+ * The rules are the ones the server applies, so a shop that swaps files gets
+ * the same answers as a shop that syncs properly - and a shop that does both
+ * never sees them disagree.
+ *
+ * With no server to order the changes, the tie-breaks have to be decided from
+ * the records alone, and they have to be decided the same way on both devices.
+ * Version first, then the clock, then the device id: arbitrary, but identical
+ * on both sides, which is the only property that matters. Both tills land on
+ * the same record rather than each keeping its own.
+ */
+type Verdict = 'TAKE_THEIRS' | 'KEEP_MINE' | 'CONFLICT'
+
+export function reconcile(entity: SyncEntity, mine: SyncMeta, theirs: SyncMeta): Verdict {
+  const policy = CONFLICT_POLICIES[entity]
+
+  // An immutable fact cannot be edited, so the copy already here is the copy.
+  if (policy === 'APPEND_ONLY') return 'KEEP_MINE'
+
+  const mineVersion = mine.version ?? 0
+  const theirsVersion = theirs.version ?? 0
+
+  if (policy === 'MANUAL_REVIEW') {
+    if (theirsVersion > mineVersion) return 'TAKE_THEIRS'
+    if (theirsVersion < mineVersion) return 'KEEP_MINE'
+    // Same version, different content: both edited from the same starting
+    // point, and nothing in the records says whose edit was meant to win.
+    return sameRecord(mine, theirs) ? 'KEEP_MINE' : 'CONFLICT'
+  }
+
+  if (theirsVersion !== mineVersion) return theirsVersion > mineVersion ? 'TAKE_THEIRS' : 'KEEP_MINE'
+
+  const mineAt = mine.updatedAt ?? 0
+  const theirsAt = theirs.updatedAt ?? 0
+  if (theirsAt !== mineAt) return theirsAt > mineAt ? 'TAKE_THEIRS' : 'KEEP_MINE'
+
+  // Two clocks that agree to the millisecond. Pick by device id so both
+  // devices pick the same one.
+  return (theirs.deviceId ?? '') > (mine.deviceId ?? '') ? 'TAKE_THEIRS' : 'KEEP_MINE'
+}
+
+function sameRecord(a: SyncMeta, b: SyncMeta): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }

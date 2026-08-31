@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { DEFAULT_LOW_STOCK, DEFAULT_LOYALTY, DEFAULT_STATUTORY_RULES, RECEIPT_SECTIONS, SYNC_ENTITIES, fromDecimal, type BusinessSettings, type Sale, type User } from '@pos/shared'
+import { DEFAULT_LOW_STOCK, DEFAULT_LOYALTY, DEFAULT_STATUTORY_RULES, RECEIPT_SECTIONS, SYNC_ENTITIES, fromDecimal, type BusinessSettings, type SyncMeta, type Sale, type User } from '@pos/shared'
 import { clearBusinessData, db, META_KEYS, readMeta, writeMeta } from './database.ts'
 import { __setIdentityForTests } from './identity.ts'
 import { commit, created, stamp } from './write.ts'
@@ -10,6 +10,7 @@ import {
   inspectBackup,
   restoreBackup,
   type BackupFile,
+  reconcile,
 } from './backup.ts'
 
 /**
@@ -430,5 +431,85 @@ describe('clearing business data', () => {
     for (const entity of SYNC_ENTITIES) {
       expect(() => db.table(entity)).not.toThrow()
     }
+  })
+})
+
+describe('catching up from another till', () => {
+  const rec = (over: Partial<SyncMeta> = {}): SyncMeta =>
+    ({ id: 'R1', deviceId: 'POS-A', version: 1, updatedAt: 1_000, createdAt: 0, deletedAt: null, ...over }) as SyncMeta
+
+  describe('what cannot be edited is never overwritten', () => {
+    test('a sale already here stands, whatever the other device says', () => {
+      const mine = rec({ version: 1 })
+      const theirs = rec({ version: 99, updatedAt: 9_999 })
+      expect(reconcile('sales', mine, theirs)).toBe('KEEP_MINE')
+      expect(reconcile('payments', mine, theirs)).toBe('KEEP_MINE')
+      expect(reconcile('inventoryMovements', mine, theirs)).toBe('KEEP_MINE')
+      expect(reconcile('auditLogs', mine, theirs)).toBe('KEEP_MINE')
+    })
+  })
+
+  describe('an edit takes the later one', () => {
+    test('a higher version wins', () => {
+      expect(reconcile('products', rec({ version: 1 }), rec({ version: 2 }))).toBe('TAKE_THEIRS')
+      expect(reconcile('products', rec({ version: 3 }), rec({ version: 2 }))).toBe('KEEP_MINE')
+    })
+
+    test('at the same version, the later clock wins', () => {
+      const mine = rec({ version: 2, updatedAt: 5_000 })
+      expect(reconcile('products', mine, rec({ version: 2, updatedAt: 6_000 }))).toBe('TAKE_THEIRS')
+      expect(reconcile('products', mine, rec({ version: 2, updatedAt: 4_000 }))).toBe('KEEP_MINE')
+    })
+
+    test('two clocks that agree still land on one answer, and the same one on both tills', () => {
+      const a = rec({ deviceId: 'POS-A', version: 2, updatedAt: 5_000 })
+      const b = rec({ deviceId: 'POS-B', version: 2, updatedAt: 5_000 })
+
+      // Run from A's side, then from B's side. Both must end up with B's copy.
+      expect(reconcile('products', a, b)).toBe('TAKE_THEIRS')
+      expect(reconcile('products', b, a)).toBe('KEEP_MINE')
+    })
+  })
+
+  describe('the things worth stopping over', () => {
+    test('a clear advance is taken without asking', () => {
+      expect(reconcile('settings', rec({ version: 1 }), rec({ version: 2 }))).toBe('TAKE_THEIRS')
+      expect(reconcile('ingredients', rec({ version: 4 }), rec({ version: 2 }))).toBe('KEEP_MINE')
+    })
+
+    test('both edited from the same point, so neither is guessed at', () => {
+      const mine = rec({ version: 2, updatedAt: 5_000 })
+      const theirs = rec({ version: 2, updatedAt: 6_000, deviceId: 'POS-B' })
+      expect(reconcile('settings', mine, theirs)).toBe('CONFLICT')
+      expect(reconcile('productVariants', mine, theirs)).toBe('CONFLICT')
+    })
+
+    test('identical records are not a disagreement', () => {
+      const same = rec({ version: 2 })
+      expect(reconcile('settings', same, { ...same })).toBe('KEEP_MINE')
+    })
+  })
+
+  describe('a deletion travels like any other edit', () => {
+    test('the other till deleting something later removes it here', () => {
+      const mine = rec({ version: 1, deletedAt: null })
+      const theirs = rec({ version: 2, deletedAt: 7_000 })
+      expect(reconcile('products', mine, theirs)).toBe('TAKE_THEIRS')
+    })
+
+    test('but not when this till has since brought it back', () => {
+      const mine = rec({ version: 3, deletedAt: null })
+      const theirs = rec({ version: 2, deletedAt: 7_000 })
+      expect(reconcile('products', mine, theirs)).toBe('KEEP_MINE')
+    })
+  })
+
+  describe('every entity has an answer', () => {
+    test('no entity falls through without a rule', () => {
+      for (const entity of SYNC_ENTITIES) {
+        const verdict = reconcile(entity, rec({ version: 1 }), rec({ version: 2 }))
+        expect(['TAKE_THEIRS', 'KEEP_MINE', 'CONFLICT']).toContain(verdict)
+      }
+    })
   })
 })
