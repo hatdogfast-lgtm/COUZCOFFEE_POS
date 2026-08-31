@@ -4,9 +4,10 @@ import { assertPinShape, isWeakPin, PIN_LENGTH } from '@pos/shared'
 import { Button, Card, Field, Input } from '../components/ui/primitives.tsx'
 import { completeSetup, isSetUp, STARTER_SUMMARY } from '../db/seed.ts'
 import { syncEngine } from '../sync/engine.ts'
+import { StartFromBackup } from './setup/StartFromBackup.tsx'
 import { cn } from '../lib/utils.ts'
 
-type SetupMode = 'NEW' | 'JOIN'
+type SetupMode = 'NEW' | 'JOIN' | 'BACKUP'
 
 /**
  * First run.
@@ -76,17 +77,22 @@ export function SetupScreen({ onDone }: { onDone: () => void }) {
           </p>
         </header>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <ModeTab active={mode === 'NEW'} onClick={() => setMode('NEW')}>
             New shop
           </ModeTab>
           <ModeTab active={mode === 'JOIN'} onClick={() => setMode('JOIN')}>
-            Join an existing one
+            Join a server
+          </ModeTab>
+          <ModeTab active={mode === 'BACKUP'} onClick={() => setMode('BACKUP')}>
+            From a backup
           </ModeTab>
         </div>
 
         {mode === 'JOIN' ? (
           <JoinExisting onDone={onDone} />
+        ) : mode === 'BACKUP' ? (
+          <StartFromBackup onDone={onDone} />
         ) : (
         <Card className="p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
