@@ -25,6 +25,7 @@ import {
   type InventoryMovement,
   type User,
 } from '@pos/shared'
+import brand from '../../brand.config.json'
 import { db, META_KEYS, readMeta, writeMeta } from './database.ts'
 import { commit, created, stamp } from './write.ts'
 import type { PendingWrite } from './write.ts'
@@ -45,7 +46,7 @@ export function defaultSettings(businessName: string): BusinessSettings {
     branding: {
       businessName,
       legalName: businessName,
-      tagline: '',
+      tagline: brand.tagline,
       logoDataUrl: null,
       address: '',
       contactNumber: '',
@@ -510,7 +511,7 @@ export async function completeSetup(input: {
   pin: string
   includeStarterMenu: boolean
 }): Promise<void> {
-  const settings = defaultSettings(input.businessName.trim() || 'My Coffee Shop')
+  const settings = defaultSettings(input.businessName.trim() || brand.businessName)
   await commit([created('settings', settings)])
   await createOwner(input.ownerName.trim() || 'Owner', input.pin)
   if (input.includeStarterMenu) {

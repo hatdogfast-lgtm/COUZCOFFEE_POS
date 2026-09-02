@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import brand from './brand.config.json'
 import path from 'node:path'
 import { cp, rm } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -37,9 +38,33 @@ function alsoBuildToRepoRoot() {
   }
 }
 
+/**
+ * Put the shop's name in the browser tab and the iOS home-screen label.
+ *
+ * Done here rather than in index.html so that brand.config.json stays the only
+ * place a name is written. A title left hard-coded is the one that is still
+ * saying "Point of Sale" long after everything else was renamed.
+ */
+function brandIndexHtml() {
+  return {
+    name: 'brand-index-html',
+    transformIndexHtml(html: string) {
+      return html
+        .replace(/<title>[\s\S]*?<\/title>/, `<title>${brand.appName}</title>`)
+        .replace(
+          /(<meta name="apple-mobile-web-app-title" content=")[^"]*(")/,
+          `$1${brand.shortName}$2`,
+        )
+        .replace(/(<meta name="description" content=")[^"]*(")/, `$1${brand.description}$2`)
+        .replace(/(<meta name="theme-color" content=")[^"]*(")/, `$1${brand.themeColor}$2`)
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    brandIndexHtml(),
     VitePWA({
       registerType: 'autoUpdate',
       // The app shell is precached so a cold start with no connection still
@@ -55,11 +80,11 @@ export default defineConfig({
       },
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Point of Sale',
-        short_name: 'POS',
-        description: 'Offline-first point of sale, inventory and costing.',
-        theme_color: '#0f1115',
-        background_color: '#0f1115',
+        name: brand.appName,
+        short_name: brand.shortName,
+        description: brand.description,
+        theme_color: brand.themeColor,
+        background_color: brand.backgroundColor,
         display: 'standalone',
         orientation: 'any',
         start_url: '/',

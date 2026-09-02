@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check, Coffee, Loader2, ShieldCheck } from 'lucide-react'
 import { assertPinShape, isWeakPin, PIN_LENGTH } from '@pos/shared'
 import { Button, Card, Field, Input } from '../components/ui/primitives.tsx'
+import brand from '../../brand.config.json'
 import { completeSetup, isSetUp, STARTER_SUMMARY } from '../db/seed.ts'
 import { syncEngine } from '../sync/engine.ts'
 import { StartFromBackup } from './setup/StartFromBackup.tsx'
@@ -12,13 +13,16 @@ type SetupMode = 'NEW' | 'JOIN' | 'BACKUP'
 /**
  * First run.
  *
- * The business names itself and the owner chooses their own PIN here. Nothing
- * is pre-filled with a factory default, because a till that ships knowing its
- * own password is a till anyone can open.
+ * The business names itself and the owner chooses their own PIN here.
+ *
+ * The shop name starts on whatever this build was branded as, since an APK
+ * built for one shop is almost always being installed in it - but it stays an
+ * ordinary editable field. The PIN never gets the same treatment: a till that
+ * ships knowing its own password is a till anyone can open.
  */
 export function SetupScreen({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<SetupMode>('NEW')
-  const [businessName, setBusinessName] = useState('')
+  const [businessName, setBusinessName] = useState(brand.businessName)
   const [ownerName, setOwnerName] = useState('')
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')

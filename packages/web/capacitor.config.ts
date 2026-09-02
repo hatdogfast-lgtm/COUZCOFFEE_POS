@@ -10,7 +10,10 @@ import type { CapacitorConfig } from '@capacitor/cli'
  */
 const config: CapacitorConfig = {
   appId: 'com.pos.offlinefirst',
-  appName: 'Point of Sale',
+  // Written by `npm run brand` from brand.config.json. Left as a plain literal
+  // on purpose: Capacitor's CLI loads this file as CommonJS, so a runtime
+  // import here fails before the config is ever read.
+  appName: 'Couz Coffee POS',
   webDir: 'dist',
 
   android: {
