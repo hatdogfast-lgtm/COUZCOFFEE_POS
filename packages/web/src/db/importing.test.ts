@@ -30,14 +30,21 @@ import {
  * brackets, and rows that must be refused rather than half-imported.
  */
 
-async function sheetFile(name: string, rows: unknown[][]): Promise<File> {
+const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+/** A workbook with one sheet per entry, in the order given. */
+async function workbookFile(sheets: Record<string, unknown[][]>): Promise<File> {
   const book = new ExcelJS.Workbook()
-  const sheet = book.addWorksheet(name)
-  for (const row of rows) sheet.addRow(row)
+  for (const [name, rows] of Object.entries(sheets)) {
+    const sheet = book.addWorksheet(name)
+    for (const row of rows) sheet.addRow(row)
+  }
   const buffer = await book.xlsx.writeBuffer()
-  return new File([buffer], `${name}.xlsx`, {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
+  return new File([buffer], 'menu.xlsx', { type: XLSX })
+}
+
+async function sheetFile(name: string, rows: unknown[][]): Promise<File> {
+  return workbookFile({ [name]: rows })
 }
 
 const INGREDIENT_HEADER = [
@@ -282,5 +289,61 @@ describe('importing recipes', () => {
     const result = await parseRecipes(file)
     expect(result.rows).toHaveLength(1)
     expect(result.problems).toEqual([])
+  })
+})
+
+describe('reading the workbook', () => {
+  test('problems carry the sheet name and the row number Excel shows', async () => {
+    // Row 3 is genuinely empty, so the bad row is row 4 in Excel.
+    const file = await sheetFile('Ingredients', [
+      INGREDIENT_HEADER,
+      ['Good One', '1L', 85, 1000, 'ml', ''],
+      [],
+      ['Bad Unit', '1 tub', 50, 10, 'scoops', ''],
+    ])
+    const result = await parseIngredients(file)
+    expect(result.problems).toEqual([
+      { sheet: 'Ingredients', row: 4, message: expect.stringMatching(/not a unit/i) },
+    ])
+  })
+
+  test('the unit column may come before the quantity column', async () => {
+    const file = await sheetFile('Ingredients', [
+      ['Ingredient Name', 'Purchase Unit', 'Total Cost (₱)', 'Total Quantity Unit', 'Total Quantity', 'Cost per Unit (AUTO)'],
+      ['Fresh Milk', '1L', 85, 'ml', 1000, ''],
+    ])
+    const result = await parseIngredients(file)
+    expect(result.problems).toEqual([])
+    expect(result.rows[0]?.totalQuantity).toBe(1000)
+    expect(result.rows[0]?.unit).toBe('ml')
+  })
+
+  test('the best-matching sheet is read, not the first that clears the bar', async () => {
+    // The Recipes sheet scores exactly 3 against the ingredient headings
+    // (Ingredient Name, Total Quantity, Cost per Unit); the Ingredients sheet
+    // scores 6. First-past-the-post picks the wrong one.
+    const file = await workbookFile({
+      Recipes: [['Drink Name', 'Ingredient Name', 'Total Quantity', 'Quantity Unit', 'Cost per Unit (AUTO)']],
+      Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']],
+    })
+    const result = await parseIngredients(file)
+    expect(result.rows).toHaveLength(1)
+    expect(result.rows[0]?.name).toBe('Fresh Milk')
+  })
+
+  test('a formula cell reads as its result and rich text as its words', async () => {
+    const book = new ExcelJS.Workbook()
+    const sheet = book.addWorksheet('Ingredients')
+    sheet.addRow(INGREDIENT_HEADER)
+    sheet.addRow(['', '1L', 85, 1000, 'ml', ''])
+    // A name pasted from a formatted sheet arrives as runs, not a string.
+    sheet.getCell('A2').value = { richText: [{ text: 'Fresh ' }, { text: 'Milk' }] }
+    // A formula written by ExcelJS carries no cached result at all.
+    sheet.getCell('F2').value = { formula: 'C2/D2' }
+    const file = new File([await book.xlsx.writeBuffer()], 'menu.xlsx', { type: XLSX })
+
+    const result = await parseIngredients(file)
+    expect(result.problems).toEqual([])
+    expect(result.rows[0]?.name).toBe('Fresh Milk')
   })
 })

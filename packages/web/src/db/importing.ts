@@ -71,6 +71,9 @@ export const RECIPE_TEMPLATE_COLUMNS = [
 ] as const
 
 export interface RowProblem {
+  /** Which sheet of the workbook, so a person can find the row. */
+  sheet: string
+  /** Excel's own row number, not a count of the rows that had something in them. */
   row: number
   message: string
 }
@@ -84,11 +87,14 @@ export interface ParseResult<T> {
 
 function text(value: unknown): string {
   if (value === null || value === undefined) return ''
-  if (typeof value === 'object' && 'result' in (value as Record<string, unknown>)) {
-    return String((value as { result: unknown }).result ?? '').trim()
-  }
-  if (typeof value === 'object' && 'text' in (value as Record<string, unknown>)) {
-    return String((value as { text: unknown }).text ?? '').trim()
+  if (typeof value === 'object') {
+    const cell = value as { result?: unknown; text?: unknown; richText?: Array<{ text: string }>; formula?: unknown }
+    // A formula: what it worked out to, if the file was saved by something
+    // that calculates. ExcelJS itself does not, so this can be nothing.
+    if ('formula' in cell || 'result' in cell) return text(cell.result ?? '')
+    if (Array.isArray(cell.richText)) return cell.richText.map((run) => run.text).join('').trim()
+    if ('text' in cell) return String(cell.text ?? '').trim()
+    return ''
   }
   return String(value).trim()
 }
@@ -96,6 +102,11 @@ function text(value: unknown): string {
 function num(value: unknown): number {
   const raw = text(value).replace(/[^\d.-]/g, '')
   return raw === '' ? Number.NaN : Number(raw)
+}
+
+/** How names are compared: case, surrounding space and doubled spaces are ignored. */
+function key(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
 /** Accepts the spellings people actually type, not just the canonical ones. */
@@ -267,55 +278,84 @@ export async function recipeTemplate(): Promise<Blob> {
 /** Locate each wanted heading, wherever the sheet happens to put it. */
 function headerMap(row: unknown[], wanted: readonly string[]): Map<string, number> {
   const found = new Map<string, number>()
-  row.forEach((cell, index) => {
-    const heading = text(cell).toLowerCase().replace(/\s+/g, ' ')
-    for (const want of wanted) {
-      const target = want.toLowerCase().replace(/\s+/g, ' ')
-      // Match loosely, so "Total Cost (PHP)" still finds "Total Cost (₱)".
-      const stripped = target.replace(/\s*\(.*\)$/, '')
-      if (heading === target || heading === stripped || heading.startsWith(stripped)) {
-        if (!found.has(want)) found.set(want, index)
-      }
-    }
-  })
+  const headings = row.map((cell) => text(cell).toLowerCase().replace(/\s+/g, ' '))
+  const target = (want: string): string => want.toLowerCase().replace(/\s+/g, ' ')
+  const stripped = (want: string): string => target(want).replace(/\s*\(.*\)$/, '')
+
+  // Exact matches first, so "Total Quantity" is not claimed by a
+  // "Total Quantity Unit" column that happens to sit to its left.
+  for (const want of wanted) {
+    const index = headings.findIndex((heading) => heading === target(want) || heading === stripped(want))
+    if (index !== -1) found.set(want, index)
+  }
+  // Then loosely, so "Total Cost (PHP)" still finds "Total Cost (₱)".
+  const taken = new Set(found.values())
+  for (const want of wanted) {
+    if (found.has(want)) continue
+    const index = headings.findIndex((heading, at) => !taken.has(at) && heading.startsWith(stripped(want)))
+    if (index === -1) continue
+    found.set(want, index)
+    taken.add(index)
+  }
   return found
 }
 
-/**
- * Read the sheet that actually holds the data.
- *
- * Not simply the first one: a real workbook has a lookup sheet, a scratch
- * sheet, last year's prices. Whichever sheet's header row matches what is
- * being imported is the one to read, and only if none matches does the first
- * sheet get used - so the error a person sees is about their headings rather
- * than about a sheet they never meant to import.
- */
-async function readSheet(file: File, wanted?: readonly string[]): Promise<unknown[][]> {
+interface SheetRow {
+  /** Excel's own row number, so a problem can be found in the file. */
+  number: number
+  cells: unknown[]
+}
+
+interface Sheet {
+  name: string
+  rows: SheetRow[]
+}
+
+/** Every sheet in the file, loaded once. */
+async function readWorkbook(file: File): Promise<Sheet[]> {
   const ExcelJS = await excel()
   const book = new ExcelJS.Workbook()
   await book.xlsx.load(await file.arrayBuffer())
-
   if (book.worksheets.length === 0) throw new Error('That file has no sheets in it.')
 
-  const readAll = (sheet: (typeof book.worksheets)[number]): unknown[][] => {
-    const rows: unknown[][] = []
-    sheet.eachRow({ includeEmpty: false }, (row) => {
+  return book.worksheets.map((sheet) => {
+    const rows: SheetRow[] = []
+    sheet.eachRow({ includeEmpty: false }, (row, number) => {
       const values = row.values as unknown[]
       // ExcelJS pads index 0; drop it so columns line up with the header.
-      rows.push(values.slice(1))
+      rows.push({ number, cells: values.slice(1) })
     })
-    return rows
-  }
+    return { name: sheet.name, rows }
+  })
+}
 
-  if (wanted) {
-    for (const sheet of book.worksheets) {
-      const rows = readAll(sheet)
-      const hasHeadings = rows.some((row) => headerMap(row, wanted).size >= 3)
-      if (hasHeadings) return rows
-    }
-  }
+interface Located {
+  sheet: Sheet
+  /** Index into `sheet.rows` of the heading row. */
+  headerIndex: number
+  columns: Map<string, number>
+}
 
-  return readAll(book.worksheets[0]!)
+/**
+ * Find the sheet that holds a given kind of data.
+ *
+ * The best-matching sheet wins, not the first to clear the bar: a recipes
+ * sheet mentions "Ingredient Name" too, and must not be mistaken for the
+ * ingredients sheet just because it comes first in the file.
+ */
+function locate(sheets: Sheet[], wanted: readonly string[]): Located | null {
+  let best: Located | null = null
+  let bestScore = 2
+  for (const sheet of sheets) {
+    sheet.rows.forEach((row, index) => {
+      const columns = headerMap(row.cells, wanted)
+      if (columns.size > bestScore) {
+        best = { sheet, headerIndex: index, columns }
+        bestScore = columns.size
+      }
+    })
+  }
+  return best
 }
 
 // -------------------------------------------------------------- ingredients --
@@ -331,46 +371,43 @@ export interface IngredientRow {
 }
 
 export async function parseIngredients(file: File): Promise<ParseResult<IngredientRow>> {
-  const sheet = await readSheet(file, INGREDIENT_COLUMNS)
-  const problems: RowProblem[] = []
-  const rows: IngredientRow[] = []
-
-  const headerIndex = sheet.findIndex((row) => headerMap(row, INGREDIENT_COLUMNS).size >= 3)
-  if (headerIndex === -1) {
+  const found = locate(await readWorkbook(file), INGREDIENT_COLUMNS)
+  if (!found) {
     throw new Error(
       `Could not find the expected column headings. The first row should contain: ${INGREDIENT_COLUMNS.join(', ')}.`,
     )
   }
-  const columns = headerMap(sheet[headerIndex] as unknown[], INGREDIENT_COLUMNS)
+  const { sheet, headerIndex, columns } = found
+  const problems: RowProblem[] = []
+  const rows: IngredientRow[] = []
 
   const existing = (await db.ingredients.toArray()).filter((row) => row.deletedAt === null)
-  const byName = new Map(existing.map((row) => [row.name.trim().toLowerCase(), row]))
+  const byName = new Map(existing.map((row) => [key(row.name), row]))
   const seen = new Set<string>()
   let duplicates = 0
 
-  for (let index = headerIndex + 1; index < sheet.length; index++) {
-    const raw = sheet[index] as unknown[]
-    const at = index + 1
-    const cell = (key: (typeof INGREDIENT_COLUMNS)[number]): unknown => {
-      const column = columns.get(key)
+  for (const { number: at, cells: raw } of sheet.rows.slice(headerIndex + 1)) {
+    const cell = (want: (typeof INGREDIENT_COLUMNS)[number]): unknown => {
+      const column = columns.get(want)
       return column === undefined ? '' : raw[column]
     }
 
     const name = text(cell('Ingredient Name'))
     if (name.length === 0) continue // A blank line is a spacer, not an error.
 
-    const key = name.toLowerCase()
-    if (seen.has(key)) {
+    const k = key(name)
+    if (seen.has(k)) {
       duplicates++
-      problems.push({ row: at, message: `"${name}" appears more than once in this file.` })
+      problems.push({ sheet: sheet.name, row: at, message: `"${name}" appears more than once in this file.` })
       continue
     }
-    seen.add(key)
+    seen.add(k)
 
     const unitRaw = text(cell('Total Quantity Unit'))
     const unit = normaliseUnit(unitRaw)
     if (!unit) {
       problems.push({
+        sheet: sheet.name,
         row: at,
         message: `"${unitRaw || 'blank'}" is not a unit we recognise. Use g, kg, ml, L or pcs.`,
       })
@@ -379,13 +416,13 @@ export async function parseIngredients(file: File): Promise<ParseResult<Ingredie
 
     const totalQuantity = num(cell('Total Quantity'))
     if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
-      problems.push({ row: at, message: 'Total quantity must be a number greater than zero.' })
+      problems.push({ sheet: sheet.name, row: at, message: 'Total quantity must be a number greater than zero.' })
       continue
     }
 
     const totalCost = num(cell('Total Cost (₱)'))
     if (!Number.isFinite(totalCost) || totalCost < 0) {
-      problems.push({ row: at, message: 'Total cost must be a number.' })
+      problems.push({ sheet: sheet.name, row: at, message: 'Total cost must be a number.' })
       continue
     }
 
@@ -398,7 +435,7 @@ export async function parseIngredients(file: File): Promise<ParseResult<Ingredie
       // Worked out here rather than trusted from the sheet: the AUTO column is
       // a formula in Excel, and a pasted copy of it is often stale.
       costRate: costRateFromPurchase(fromDecimal(totalCost), totalQuantity, unit),
-      existingId: byName.get(key)?.id ?? null,
+      existingId: byName.get(k)?.id ?? null,
     })
   }
 
@@ -482,17 +519,15 @@ export function splitDrinkName(raw: string): { name: string; size: string } {
 }
 
 export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> {
-  const sheet = await readSheet(file, RECIPE_COLUMNS)
-  const problems: RowProblem[] = []
-  const rows: RecipeRow[] = []
-
-  const headerIndex = sheet.findIndex((row) => headerMap(row, RECIPE_COLUMNS).size >= 3)
-  if (headerIndex === -1) {
+  const found = locate(await readWorkbook(file), RECIPE_COLUMNS)
+  if (!found) {
     throw new Error(
       `Could not find the expected column headings. The first row should contain: ${RECIPE_COLUMNS.join(', ')}.`,
     )
   }
-  const columns = headerMap(sheet[headerIndex] as unknown[], RECIPE_COLUMNS)
+  const { sheet, headerIndex, columns } = found
+  const problems: RowProblem[] = []
+  const rows: RecipeRow[] = []
 
   const [ingredients, products, variants] = await Promise.all([
     db.ingredients.toArray(),
@@ -500,7 +535,7 @@ export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> 
     db.productVariants.toArray(),
   ])
   const ingredientByName = new Map(
-    ingredients.filter((row) => row.deletedAt === null).map((row) => [row.name.trim().toLowerCase(), row]),
+    ingredients.filter((row) => row.deletedAt === null).map((row) => [key(row.name), row]),
   )
   const liveProducts = products.filter((row) => row.deletedAt === null)
   const liveVariants = variants.filter((row) => row.deletedAt === null)
@@ -508,11 +543,9 @@ export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> 
   const seen = new Set<string>()
   let duplicates = 0
 
-  for (let index = headerIndex + 1; index < sheet.length; index++) {
-    const raw = sheet[index] as unknown[]
-    const at = index + 1
-    const cell = (key: (typeof RECIPE_COLUMNS)[number]): unknown => {
-      const column = columns.get(key)
+  for (const { number: at, cells: raw } of sheet.rows.slice(headerIndex + 1)) {
+    const cell = (want: (typeof RECIPE_COLUMNS)[number]): unknown => {
+      const column = columns.get(want)
       return column === undefined ? '' : raw[column]
     }
 
@@ -525,39 +558,45 @@ export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> 
     const parsed = splitDrinkName(drink)
     const size = text(cell('Size')) || parsed.size
 
-    const product = liveProducts.find((entry) => entry.name.trim().toLowerCase() === parsed.name.toLowerCase())
+    const product = liveProducts.find((entry) => key(entry.name) === key(parsed.name))
     if (!product) {
-      problems.push({ row: at, message: `There is no product called "${parsed.name}".` })
+      problems.push({ sheet: sheet.name, row: at, message: `There is no product called "${parsed.name}".` })
       continue
     }
 
     const forProduct = liveVariants.filter((entry) => entry.productId === product.id)
     const variant = size
-      ? forProduct.find((entry) => entry.name.trim().toLowerCase() === size.toLowerCase())
+      ? forProduct.find((entry) => key(entry.name) === key(size))
       : forProduct.find((entry) => entry.isDefault) ?? forProduct[0]
 
     if (!variant) {
       problems.push({
+        sheet: sheet.name,
         row: at,
         message: `"${parsed.name}" has no size called "${size}". It has: ${forProduct.map((entry) => entry.name).join(', ') || 'none'}.`,
       })
       continue
     }
 
-    const ingredient = ingredientByName.get(ingredientName.toLowerCase())
+    const ingredient = ingredientByName.get(key(ingredientName))
     if (!ingredient) {
-      problems.push({ row: at, message: `There is no ingredient called "${ingredientName}". Import ingredients first.` })
+      problems.push({
+        sheet: sheet.name,
+        row: at,
+        message: `There is no ingredient called "${ingredientName}". Import ingredients first.`,
+      })
       continue
     }
 
     const unitRaw = text(cell('Quantity Unit'))
     const unit = normaliseUnit(unitRaw)
     if (!unit) {
-      problems.push({ row: at, message: `"${unitRaw || 'blank'}" is not a unit we recognise.` })
+      problems.push({ sheet: sheet.name, row: at, message: `"${unitRaw || 'blank'}" is not a unit we recognise.` })
       continue
     }
     if (unitDimension(unit) !== ingredient.dimension) {
       problems.push({
+        sheet: sheet.name,
         row: at,
         message: `${ingredient.name} is measured in ${ingredient.displayUnit}, so it cannot be used in ${unit}.`,
       })
@@ -566,17 +605,17 @@ export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> 
 
     const quantity = num(cell('Quantity Used'))
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      problems.push({ row: at, message: 'Quantity used must be a number greater than zero.' })
+      problems.push({ sheet: sheet.name, row: at, message: 'Quantity used must be a number greater than zero.' })
       continue
     }
 
-    const key = `${variant.id}|${ingredient.id}`
-    if (seen.has(key)) {
+    const lineKey = `${variant.id}|${ingredient.id}`
+    if (seen.has(lineKey)) {
       duplicates++
-      problems.push({ row: at, message: `${ingredient.name} is listed twice for ${drink}.` })
+      problems.push({ sheet: sheet.name, row: at, message: `${ingredient.name} is listed twice for ${drink}.` })
       continue
     }
-    seen.add(key)
+    seen.add(lineKey)
 
     rows.push({
       productName: product.name,
