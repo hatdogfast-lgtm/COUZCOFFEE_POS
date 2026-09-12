@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { CheckCircle2, Download, TriangleAlert, Upload } from 'lucide-react'
 import {
   applyIngredients,
-  applyRecipes,
+  applyMenu,
   ingredientTemplate,
   INGREDIENT_COLUMNS,
   parseIngredients,
@@ -92,7 +92,7 @@ export function ImportPanel() {
         const outcome = await applyIngredients(ingredients.rows)
         toast.success(`${outcome.created} added, ${outcome.updated} updated.`)
       } else if (recipes) {
-        const outcome = await applyRecipes(recipes, user?.id ?? '')
+        const outcome = await applyMenu(recipes, user?.id ?? '')
         toast.success(`${outcome.recipes} recipes saved.`)
       }
       reset()

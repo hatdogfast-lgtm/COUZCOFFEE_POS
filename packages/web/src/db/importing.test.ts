@@ -11,10 +11,10 @@ import {
 import { db } from './database.ts'
 import { __setIdentityForTests } from './identity.ts'
 import { commit, created, stamp } from './write.ts'
-import { loadRecipeFor } from './recipes.ts'
+import { loadRecipeFor, saveRecipe } from './recipes.ts'
 import {
   applyIngredients,
-  applyRecipes,
+  applyMenu,
   DEFAULT_CATEGORY,
   normaliseUnit,
   parseIngredients,
@@ -225,7 +225,7 @@ describe('importing recipes', () => {
     expect(result.rows).toHaveLength(2)
 
     const variant = (await db.productVariants.toArray())[0]!
-    await applyRecipes(await parseMenu(file), 'USER-1')
+    await applyMenu(await parseMenu(file), 'USER-1')
 
     const { components } = await loadRecipeFor(variant.id)
     expect(components).toHaveLength(2)
@@ -276,8 +276,8 @@ describe('importing recipes', () => {
     await seedMenu()
     const rows = [RECIPE_HEADER, ['Caramel Macchiato', '16oz', 'Jersey Full Cream Milk 1L', 150, 'ml']]
 
-    await applyRecipes(await parseMenu(await sheetFile('R', rows)), 'USER-1')
-    await applyRecipes(await parseMenu(await sheetFile('R', rows)), 'USER-1')
+    await applyMenu(await parseMenu(await sheetFile('R', rows)), 'USER-1')
+    await applyMenu(await parseMenu(await sheetFile('R', rows)), 'USER-1')
 
     const variant = (await db.productVariants.toArray())[0]!
     const { components } = await loadRecipeFor(variant.id)
@@ -535,5 +535,131 @@ describe('importing the whole menu', () => {
     })
     const parse = await parseMenu(file)
     expect(parse.recipes.problems).toEqual([])
+  })
+
+  test('creates the category, the drink, its priced sizes and their recipes from one file', async () => {
+    const file = await workbookFile({
+      Ingredients: [
+        INGREDIENT_HEADER,
+        ['Fresh Milk', '1L', 85, 1000, 'ml', ''],
+        ['Espresso Beans', '1kg', 900, 1000, 'g', ''],
+      ],
+      Recipes: [
+        MENU_HEADER,
+        ['Spanish Latte (16oz)', 'Coffee', 165, 'Fresh Milk', 150, 'ml'],
+        ['Spanish Latte (16oz)', '', '', 'Espresso Beans', 18, 'g'],
+        ['Spanish Latte (12oz)', 'Coffee', 145, 'Fresh Milk', 100, 'ml'],
+      ],
+    })
+    const outcome = await applyMenu(await parseMenu(file), 'USER-1')
+
+    expect(outcome).toEqual({
+      ingredients: { created: 2, updated: 0 },
+      categories: 1,
+      products: 1,
+      sizes: 2,
+      recipes: 2,
+    })
+
+    const categories = await db.categories.toArray()
+    expect(categories.map((row) => row.name)).toEqual(['Coffee'])
+
+    const products = await db.products.toArray()
+    expect(products).toHaveLength(1)
+    expect(products[0]).toMatchObject({ name: 'Spanish Latte', categoryId: categories[0]!.id, active: true, available: true })
+
+    const variants = (await db.productVariants.toArray()).sort((a, b) => a.sortOrder - b.sortOrder)
+    expect(variants.map((row) => [row.name, row.price, row.isDefault])).toEqual([
+      ['16oz', fromDecimal(165), true],
+      ['12oz', fromDecimal(145), false],
+    ])
+
+    const large = await loadRecipeFor(variants[0]!.id)
+    expect(large.components.map((c) => c.baseQuantity).sort((a, b) => a - b)).toEqual([18, 150])
+    const small = await loadRecipeFor(variants[1]!.id)
+    expect(small.components.map((c) => c.baseQuantity)).toEqual([100])
+
+    const audit = await db.auditLogs.toArray()
+    expect(audit.filter((row) => row.action === 'PRODUCT_CREATED')).toHaveLength(1)
+  })
+
+  test('a new size joins an existing drink without becoming its default', async () => {
+    await seedMenu()
+    const product = (await db.products.toArray())[0]!
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['Caramel Macchiato (12oz)', 'Whatever', 145, 'Jersey Full Cream Milk 1L', 120, 'ml']],
+    })
+    const outcome = await applyMenu(await parseMenu(file), 'USER-1')
+    expect(outcome).toMatchObject({ categories: 0, products: 0, sizes: 1, recipes: 1 })
+
+    const variants = (await db.productVariants.where('productId').equals(product.id).toArray()).sort(
+      (a, b) => a.sortOrder - b.sortOrder,
+    )
+    expect(variants.map((row) => [row.name, row.isDefault])).toEqual([
+      ['16oz', true],
+      ['12oz', false],
+    ])
+    expect((await db.categories.toArray()).map((row) => row.name)).toEqual(['Hot'])
+  })
+
+  test('an existing size keeps its price, and its recipe is replaced', async () => {
+    await seedMenu()
+    const before = (await db.productVariants.toArray())[0]!
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['Caramel Macchiato (16oz)', '', 999, 'Nescafe Gold', 3, 'g']],
+    })
+    await applyMenu(await parseMenu(file), 'USER-1')
+
+    const after = (await db.productVariants.toArray())[0]!
+    expect(after.price).toBe(before.price)
+    expect((await loadRecipeFor(after.id)).components.map((c) => c.baseQuantity)).toEqual([3])
+  })
+
+  test('importing the same file twice creates nothing the second time', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']],
+      Recipes: [MENU_HEADER, ['Latte (16oz)', 'Coffee', 165, 'Fresh Milk', 150, 'ml']],
+    })
+    await applyMenu(await parseMenu(file), 'USER-1')
+    const again = await applyMenu(await parseMenu(file), 'USER-1')
+
+    expect(again).toEqual({
+      ingredients: { created: 0, updated: 1 },
+      categories: 0,
+      products: 0,
+      sizes: 0,
+      recipes: 1,
+    })
+    expect(await db.products.count()).toBe(1)
+    expect(await db.productVariants.count()).toBe(1)
+    expect(await db.categories.count()).toBe(1)
+  })
+
+  test('a category is matched to an existing one regardless of case', async () => {
+    await seedMenu()
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['Flat White (12oz)', 'HOT', 140, 'Jersey Full Cream Milk 1L', 100, 'ml']],
+    })
+    const outcome = await applyMenu(await parseMenu(file), 'USER-1')
+    expect(outcome.categories).toBe(0)
+    const hot = (await db.categories.toArray())[0]!
+    expect((await db.products.toArray()).find((row) => row.name === 'Flat White')?.categoryId).toBe(hot.id)
+  })
+
+  test('recipe notes survive a re-import', async () => {
+    await seedMenu()
+    const variant = (await db.productVariants.toArray())[0]!
+    const ingredient = (await db.ingredients.toArray())[0]!
+    await saveRecipe({
+      variant,
+      components: [{ ingredientId: ingredient.id, baseQuantity: 10, optional: false }],
+      notes: 'Stir twice.',
+      userId: 'USER-1',
+    })
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['Caramel Macchiato (16oz)', '', '', 'Nescafe Gold', 3, 'g']],
+    })
+    await applyMenu(await parseMenu(file), 'USER-1')
+    expect((await loadRecipeFor(variant.id)).recipe?.notes).toBe('Stir twice.')
   })
 })

@@ -5,6 +5,8 @@ import {
   toBase,
   toDecimal,
   unitDimension,
+  type AuditLog,
+  type Category,
   type Dimension,
   type Ingredient,
   type Money,
@@ -18,7 +20,7 @@ import { db } from './database.ts'
 import { commit, created, revise, stamp, updated } from './write.ts'
 import type { PendingWrite } from './write.ts'
 import type { RecipeComponent } from './recipes.ts'
-import { saveRecipe } from './recipes.ts'
+import { loadRecipeFor, saveRecipe } from './recipes.ts'
 
 /**
  * Bringing a menu in from a spreadsheet.
@@ -479,9 +481,13 @@ export async function parseIngredients(file: File): Promise<ParseResult<Ingredie
   return parseIngredientSheet(found, existing)
 }
 
-export async function applyIngredients(rows: IngredientRow[]): Promise<{ created: number; updated: number }> {
+export async function applyIngredients(
+  rows: IngredientRow[],
+): Promise<{ created: number; updated: number; ids: Map<string, string> }> {
   const writes: PendingWrite[] = []
   const existing = new Map((await db.ingredients.toArray()).map((row) => [row.id, row]))
+  /** Every ingredient written, by name key, so recipes can find the new ones. */
+  const ids = new Map<string, string>()
   let createdCount = 0
   let updatedCount = 0
 
@@ -501,31 +507,29 @@ export async function applyIngredients(rows: IngredientRow[]): Promise<{ created
           }),
         ),
       )
+      ids.set(key(row.name), current.id)
       updatedCount++
     } else {
-      writes.push(
-        created(
-          'ingredients',
-          stamp<Ingredient>({
-            name: row.name,
-            sku: row.purchaseUnit,
-            stockClass: guessStockClass(row.name),
-            dimension,
-            displayUnit: row.unit,
-            costRate: row.costRate,
-            supplierId: null,
-            lowStockThresholdBase: 0,
-            trackStock: true,
-            active: true,
-          }),
-        ),
-      )
+      const record = stamp<Ingredient>({
+        name: row.name,
+        sku: row.purchaseUnit,
+        stockClass: guessStockClass(row.name),
+        dimension,
+        displayUnit: row.unit,
+        costRate: row.costRate,
+        supplierId: null,
+        lowStockThresholdBase: 0,
+        trackStock: true,
+        active: true,
+      })
+      writes.push(created('ingredients', record))
+      ids.set(key(row.name), record.id)
       createdCount++
     }
   }
 
   await commit(writes)
-  return { created: createdCount, updated: updatedCount }
+  return { created: createdCount, updated: updatedCount, ids }
 }
 
 /** Packaging and resale items behave differently, so guess from the name. */
@@ -845,25 +849,171 @@ export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> 
   return (await parseMenu(file)).recipes
 }
 
-export async function applyRecipes(parse: MenuParse, userId: string): Promise<{ recipes: number }> {
-  const variantByKey = new Map(parse.drinks.map((drink) => [drink.key, drink.variantId]))
+export interface MenuOutcome {
+  ingredients: { created: number; updated: number }
+  categories: number
+  products: number
+  sizes: number
+  recipes: number
+}
+
+/**
+ * Write everything a parsed menu described.
+ *
+ * Three commits rather than one, in an order that lets a second run of the
+ * same file find what the first one made: ingredients first, because recipes
+ * look them up by name; then categories, products and sizes together; then
+ * the recipe for each size through saveRecipe, which already knows how to
+ * diff and tombstone a recipe's rows. One transaction is possible without
+ * touching recipes.ts, but only by copying that diff logic in here; the
+ * price of not doing so is that an interrupted run leaves menu items without
+ * recipes - and importing the file again completes them, creating nothing
+ * twice.
+ */
+export async function applyMenu(parse: MenuParse, userId: string): Promise<MenuOutcome> {
+  const now = Date.now()
+
+  // -------------------------------------------------------------- ingredients --
+  const ingredients = await applyIngredients(parse.ingredients.rows)
+  const ingredientIds = new Map(ingredients.ids)
+  for (const row of (await db.ingredients.toArray()).filter((entry) => entry.deletedAt === null)) {
+    if (!ingredientIds.has(key(row.name))) ingredientIds.set(key(row.name), row.id)
+  }
+
+  // --------------------------------------------------------------------- menu --
+  const writes: PendingWrite[] = []
+  const [categories, liveVariants, productCount] = await Promise.all([
+    db.categories.toArray().then((rows) => rows.filter((row) => row.deletedAt === null && row.active)),
+    db.productVariants.toArray().then((rows) => rows.filter((row) => row.deletedAt === null)),
+    db.products.count(),
+  ])
+
+  const categoryIds = new Map(categories.map((row) => [key(row.name), row.id]))
+  let categoryCount = 0
+  for (const name of parse.newCategories) {
+    if (categoryIds.has(key(name))) continue
+    const category = stamp<Category>(
+      {
+        name,
+        colour: '#8C6F4A',
+        icon: 'Tag',
+        servingUnit: 'CUP',
+        sortOrder: categories.length + categoryCount,
+        active: true,
+      },
+      now,
+    )
+    writes.push(created('categories', category))
+    categoryIds.set(key(name), category.id)
+    categoryCount++
+  }
+
+  const productIds = new Map<string, string>()
+  const variantIds = new Map<string, string>()
+  const sizesOf = new Map<string, number>()
+  for (const variant of liveVariants) sizesOf.set(variant.productId, (sizesOf.get(variant.productId) ?? 0) + 1)
+  let productCreated = 0
+  let sizeCreated = 0
+
+  for (const drink of parse.drinks) {
+    if (drink.variantId !== null) {
+      variantIds.set(drink.key, drink.variantId)
+      continue
+    }
+
+    let productId = drink.productId ?? productIds.get(key(drink.name))
+    if (!productId) {
+      const categoryId = categoryIds.get(key(drink.category ?? DEFAULT_CATEGORY))
+      if (!categoryId) throw new Error(`There is no category called "${drink.category}".`)
+      const product = stamp<Product>(
+        {
+          categoryId,
+          name: drink.name,
+          description: '',
+          sku: '',
+          imageDataUrl: null,
+          active: true,
+          available: true,
+          sortOrder: productCount + productCreated,
+          taxable: true,
+          modifierGroupIds: [],
+        },
+        now,
+      )
+      writes.push(created('products', product))
+      writes.push(
+        created(
+          'auditLogs',
+          stamp<AuditLog>(
+            {
+              entityType: 'products',
+              entityId: product.id,
+              action: 'PRODUCT_CREATED',
+              userId,
+              before: null,
+              after: JSON.stringify({ name: product.name, source: 'import' }),
+              reason: '',
+              occurredAt: now,
+            },
+            now,
+          ),
+        ),
+      )
+      productId = product.id
+      productIds.set(key(drink.name), productId)
+      productCreated++
+    }
+
+    // The first size a product gets is its default; any later one is not.
+    const existingSizes = sizesOf.get(productId) ?? 0
+    const variant = stamp<ProductVariant>(
+      {
+        productId,
+        name: drink.size,
+        price: drink.price ?? 0,
+        sortOrder: existingSizes,
+        active: true,
+        isDefault: existingSizes === 0,
+      },
+      now,
+    )
+    writes.push(created('productVariants', variant))
+    sizesOf.set(productId, existingSizes + 1)
+    variantIds.set(drink.key, variant.id)
+    sizeCreated++
+  }
+
+  await commit(writes, now)
+
+  // ------------------------------------------------------------------ recipes --
   const byVariant = new Map<string, RecipeComponent[]>()
   for (const row of parse.recipes.rows) {
-    const variantId = variantByKey.get(row.drinkKey)
-    if (!variantId || !row.ingredientId) continue
+    const variantId = variantIds.get(row.drinkKey)
+    const ingredientId = row.ingredientId ?? ingredientIds.get(key(row.ingredientName))
+    if (!variantId || !ingredientId) continue
     const list = byVariant.get(variantId) ?? []
-    list.push({ ingredientId: row.ingredientId, baseQuantity: toBase(row.quantity, row.unit), optional: false })
+    list.push({ ingredientId, baseQuantity: toBase(row.quantity, row.unit), optional: false })
     byVariant.set(variantId, list)
   }
 
   const variants = await db.productVariants.toArray()
+  let recipeCount = 0
   for (const [variantId, components] of byVariant) {
     const variant = variants.find((entry) => entry.id === variantId)
     if (!variant) continue
     // Each sheet is the whole recipe for that size, so it replaces what was
     // there rather than adding to it - importing twice must not double it.
-    await saveRecipe({ variant, components, notes: '', userId })
+    // The notes are the owner's, not the sheet's, and are left as they were.
+    const { recipe } = await loadRecipeFor(variantId)
+    await saveRecipe({ variant, components, notes: recipe?.notes ?? '', userId })
+    recipeCount++
   }
 
-  return { recipes: byVariant.size }
+  return {
+    ingredients: { created: ingredients.created, updated: ingredients.updated },
+    categories: categoryCount,
+    products: productCreated,
+    sizes: sizeCreated,
+    recipes: recipeCount,
+  }
 }
