@@ -16,6 +16,8 @@ import {
   applyIngredients,
   applyMenu,
   DEFAULT_CATEGORY,
+  MENU_RECIPE_COLUMNS,
+  menuTemplate,
   normaliseUnit,
   parseIngredients,
   parseMenu,
@@ -199,12 +201,19 @@ async function seedMenu(): Promise<void> {
     displayUnit: 'g', costRate: costRateFromPurchase(fromDecimal(294), 100, 'g'), supplierId: null,
     lowStockThresholdBase: 0, trackStock: true, active: true,
   })
+  // Shown by the kilo, so the template's unit handling is exercised, not assumed.
+  const kilo = stamp<Ingredient>({
+    name: 'Espresso Beans', sku: '1kg bag', stockClass: 'INGREDIENT', dimension: 'MASS',
+    displayUnit: 'kg', costRate: costRateFromPurchase(fromDecimal(900), 1, 'kg'), supplierId: null,
+    lowStockThresholdBase: 0, trackStock: true, active: true,
+  })
   await commit([
     created('categories', category),
     created('products', product),
     created('productVariants', variant),
     created('ingredients', milk),
     created('ingredients', beans),
+    created('ingredients', kilo),
   ])
 }
 
@@ -661,5 +670,51 @@ describe('importing the whole menu', () => {
     })
     await applyMenu(await parseMenu(file), 'USER-1')
     expect((await loadRecipeFor(variant.id)).recipe?.notes).toBe('Stir twice.')
+  })
+
+  test('the downloaded template imports back with nothing to report', async () => {
+    await seedMenu()
+    const blob = await menuTemplate()
+    const file = new File([await blob.arrayBuffer()], 'menu-template.xlsx', { type: XLSX })
+
+    const book = new ExcelJS.Workbook()
+    await book.xlsx.load(await blob.arrayBuffer())
+    expect(book.worksheets.map((sheet) => sheet.name)).toEqual(['Ingredients', 'Recipes'])
+    expect(book.getWorksheet('Recipes')!.getRow(1).values).toEqual([undefined, ...MENU_RECIPE_COLUMNS])
+    // The cost columns look up the importable sheet, not a separate lookup,
+    // and the sheet's own maths converts kilos and litres before comparing.
+    const lookup = book.getWorksheet('Recipes')!.getCell('G2').value as { formula: string }
+    expect(lookup.formula).toContain('Ingredients!$A$2:$F$')
+    const perBase = book.getWorksheet('Ingredients')!.getCell('F2').value as { formula: string }
+    expect(perBase.formula).toContain('"kg"')
+
+    const parse = await parseMenu(file)
+    expect(parse.ingredients.problems).toEqual([])
+    expect(parse.recipes.problems).toEqual([])
+    expect(parse.sheets).toEqual({ ingredients: true, recipes: true })
+    // The shop's own ingredients come back as updates, in the unit each one
+    // is shown in, at the same rate. (Exact here because every seeded rate
+    // is a whole centavo per kilo or litre; a rate that is not would come
+    // back a fraction of a centavo different - see the note in menuTemplate.)
+    const stored = await db.ingredients.toArray()
+    expect(parse.ingredients.rows).toHaveLength(stored.length)
+    for (const row of parse.ingredients.rows) {
+      const original = stored.find((entry) => entry.name === row.name)!
+      expect(row.existingId).toBe(original.id)
+      expect(row.unit).toBe(original.displayUnit)
+      expect(row.costRate).toBe(original.costRate)
+    }
+    // The sample recipe is for a drink the shop already has.
+    expect(parse.drinks[0]?.variantId).not.toBeNull()
+  })
+
+  test('the template on an empty shop uses sample rows that import cleanly', async () => {
+    const blob = await menuTemplate()
+    const file = new File([await blob.arrayBuffer()], 'menu-template.xlsx', { type: XLSX })
+    const parse = await parseMenu(file)
+    expect(parse.ingredients.problems).toEqual([])
+    expect(parse.recipes.problems).toEqual([])
+    expect(parse.drinks[0]).toMatchObject({ productId: null, variantId: null, category: 'Coffee' })
+    expect(parse.drinks[0]?.price).toBeGreaterThan(0)
   })
 })

@@ -86,17 +86,6 @@ export const MENU_RECIPE_COLUMNS = [
 /** Where a new drink goes when its row does not say. */
 export const DEFAULT_CATEGORY = 'Drinks'
 
-/** The full layout written into the downloadable template. */
-export const RECIPE_TEMPLATE_COLUMNS = [
-  'Drink Name',
-  'Ingredient Name',
-  'Quantity Used',
-  'Quantity Unit',
-  'Cost per Unit (AUTO)',
-  'Total Ingredient Cost',
-  'Unit Check',
-] as const
-
 export interface RowProblem {
   /** Which sheet of the workbook, so a person can find the row. */
   sheet: string
@@ -151,96 +140,117 @@ export function normaliseUnit(raw: string): Unit | null {
   return isUnit(raw.trim()) ? (raw.trim() as Unit) : null
 }
 
-// ---------------------------------------------------------------- templates --
+// ---------------------------------------------------------------- template --
 
-async function templateWorkbook(sheetName: string, headings: readonly string[], samples: unknown[][]) {
-  const ExcelJS = await excel()
-  const book = new ExcelJS.Workbook()
-  const sheet = book.addWorksheet(sheetName)
+/** How many rows the lookup formulas are allowed to reach. */
+const LOOKUP_ROWS = 500
 
-  sheet.addRow([...headings])
+type Worksheet = import('exceljs').Worksheet
+
+function styleSheet(sheet: Worksheet, headings: readonly string[]): void {
   const header = sheet.getRow(1)
   header.font = { bold: true }
   header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE4DA' } }
   header.alignment = { vertical: 'middle' }
-
-  for (const sample of samples) sheet.addRow(sample)
-
   headings.forEach((heading, index) => {
     sheet.getColumn(index + 1).width = Math.max(16, heading.length + 4)
   })
   sheet.views = [{ state: 'frozen', ySplit: 1 }]
-
-  return book
 }
-
-export async function ingredientTemplate(): Promise<Blob> {
-  const book = await templateWorkbook('Ingredients', INGREDIENT_COLUMNS, [
-    ['Jersey Full Cream Milk 1L', '1L', 85, 1000, 'ml', ''],
-    ['Nescafe Gold Medium Roast', '100g jar', 294.12, 100, 'grams', ''],
-    ['Pet Cup 16oz', '50 pcs', 150, 50, 'pcs', ''],
-  ])
-  const buffer = await book.xlsx.writeBuffer()
-  return new Blob([buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-}
-
-/** How many ingredient rows the lookup formulas are allowed to reach. */
-const LOOKUP_ROWS = 500
 
 /**
- * The recipes workbook.
+ * Spreadsheet-side unit handling, mirroring normaliseUnit.
  *
- * Laid out like the sheet a coffee shop already keeps, so existing rows paste
- * straight in: the drink carries its size in brackets, and the last three
- * columns work themselves out.
- *
- * The workbook ships with a second sheet holding the shop's real ingredients
- * and their real costs, so the moment a row is typed the cost appears. That is
- * the point of it - a recipe you cannot price while you are writing it is a
- * recipe you price wrong.
- *
- * Those computed columns are read on import but never trusted: the cost that
- * ends up on the books is worked out here from the ingredient, not from
- * whatever a spreadsheet happened to contain.
+ * The sheet's cost columns are a convenience - nothing on the books comes
+ * from them - but a convenience that is wrong by a thousand is worse than
+ * none. So the sheet, like the importer, works per gram, millilitre and
+ * piece: a purchase in kilos or litres is scaled before the cost per unit
+ * is worked out, a recipe line in kilos or litres is scaled before it is
+ * priced, and the unit check compares kinds of measurement, not spellings.
  */
-export async function recipeTemplate(): Promise<Blob> {
+const MASS_WORDS = ['g', 'gram', 'grams', 'gr', 'kg', 'kilo', 'kilos', 'kilogram', 'kilograms']
+const VOLUME_WORDS = ['ml', 'milliliter', 'millilitre', 'milliliters', 'millilitres', 'l', 'liter', 'litre', 'liters', 'litres']
+const THOUSAND_WORDS = ['kg', 'kilo', 'kilos', 'kilogram', 'kilograms', 'l', 'liter', 'litre', 'liters', 'litres']
+
+function isAny(ref: string, words: string[]): string {
+  return `OR(${words.map((word) => `LOWER(${ref})="${word}"`).join(',')})`
+}
+
+/** 1000 for a kilo or a litre, else 1. */
+function perBase(ref: string): string {
+  return `IF(${isAny(ref, THOUSAND_WORDS)},1000,1)`
+}
+
+/** "MASS", "VOLUME" or "COUNT" for a unit cell, as the importer would read it. */
+function dimensionOf(ref: string): string {
+  return `IF(${isAny(ref, MASS_WORDS)},"MASS",IF(${isAny(ref, VOLUME_WORDS)},"VOLUME","COUNT"))`
+}
+
+/**
+ * The menu workbook: an Ingredients sheet and a Recipes sheet.
+ *
+ * Laid out like the sheets a coffee shop already keeps, so existing rows paste
+ * straight in. The recipe's cost columns look up the Ingredients sheet of the
+ * same file, so a cost appears the moment a row is typed - on a sheet that
+ * is itself imported, rather than a separate lookup that is empty until an
+ * import has already happened.
+ *
+ * Both sheets start from the shop's own data where there is any, so the file
+ * imports cleanly as downloaded. The computed columns are read on import but
+ * never trusted: the cost that ends up on the books is worked out here.
+ */
+export async function menuTemplate(): Promise<Blob> {
   const ExcelJS = await excel()
   const book = new ExcelJS.Workbook()
 
-  // The recipes sheet is added first so it is the one that opens; the
-  // ingredient list behind it is a lookup, not something to type into.
-  const sheet = book.addWorksheet('Recipes')
-
-  // ------------------------------------------------------------ ingredients --
-  const live = (await db.ingredients.toArray())
+  const [ingredients, products, variants, categories] = await Promise.all([
+    db.ingredients.toArray(),
+    db.products.toArray(),
+    db.productVariants.toArray(),
+    db.categories.toArray(),
+  ])
+  const live = ingredients
     .filter((row) => row.deletedAt === null && row.active)
     .sort((a, b) => a.name.localeCompare(b.name))
 
-  const source = book.addWorksheet('Ingredients')
-  source.addRow(['Ingredient Name', 'Unit', 'Cost per Unit'])
-  for (const ingredient of live) {
-    source.addRow([
-      ingredient.name,
-      BASE_UNIT[ingredient.dimension],
-      ingredient.costRate / COST_PRECISION / 100,
-    ])
+  // ------------------------------------------------------------ ingredients --
+  const first = book.addWorksheet('Ingredients')
+  first.addRow([...INGREDIENT_COLUMNS])
+
+  // Each ingredient is written in the unit it is shown in, so importing the
+  // file back leaves that alone: one kilo or one litre, or a thousand grams,
+  // a thousand millilitres, a hundred pieces. The cost is that much at the
+  // stored rate, to the centavo - exact for any rate that is a whole centavo
+  // per kilo or litre, and a fraction of a centavo out for one that is not.
+  const ingredientRows: unknown[][] =
+    live.length > 0
+      ? live.map((ingredient) => {
+          const unit = ingredient.displayUnit
+          const quantity = unit === 'kg' || unit === 'L' ? 1 : unit === 'pcs' ? 100 : 1000
+          const cost = (ingredient.costRate * toBase(quantity, unit)) / COST_PRECISION / 100
+          return [ingredient.name, ingredient.sku, Math.round(cost * 100) / 100, quantity, unit]
+        })
+      : [
+          ['Jersey Full Cream Milk 1L', '1L', 85, 1000, 'ml'],
+          ['Nescafe Gold Medium Roast', '100g jar', 294.12, 100, 'grams'],
+          ['Pet Cup 16oz', '50 pcs', 150, 50, 'pcs'],
+        ]
+  for (const row of ingredientRows) first.addRow(row)
+
+  // Cost per gram, millilitre or piece, whatever the purchase was in.
+  for (let row = 2; row <= LOOKUP_ROWS; row++) {
+    first.getCell(`F${row}`).value = {
+      formula: `IF(AND($C${row}<>"",$D${row}>0),$C${row}/($D${row}*${perBase(`$E${row}`)}),"")`,
+    }
+    first.getCell(`F${row}`).numFmt = '#,##0.0000'
   }
-  source.getRow(1).font = { bold: true }
-  source.getColumn(1).width = 38
-  source.getColumn(2).width = 12
-  source.getColumn(3).width = 16
-  source.getColumn(3).numFmt = '#,##0.0000'
-  source.views = [{ state: 'frozen', ySplit: 1 }]
+  styleSheet(first, INGREDIENT_COLUMNS)
+  first.getColumn(1).width = 38
 
   // ---------------------------------------------------------------- recipes --
-  sheet.addRow([...RECIPE_TEMPLATE_COLUMNS])
+  const second = book.addWorksheet('Recipes')
+  second.addRow([...MENU_RECIPE_COLUMNS])
 
-  // Sample rows are built from the shop's own menu and ingredients, so the
-  // template imports cleanly as downloaded. Illustrative names that do not
-  // exist here would fail on the first try and teach the wrong lesson.
-  const [products, variants] = await Promise.all([db.products.toArray(), db.productVariants.toArray()])
   const liveVariants = variants.filter((row) => row.deletedAt === null && row.active)
   const example = liveVariants
     .map((variant) => ({
@@ -248,51 +258,51 @@ export async function recipeTemplate(): Promise<Blob> {
       product: products.find((row) => row.id === variant.productId && row.deletedAt === null),
     }))
     .find((entry) => entry.product)
+  const exampleCategory = example?.product
+    ? (categories.find((row) => row.id === example.product!.categoryId)?.name ?? DEFAULT_CATEGORY)
+    : 'Coffee'
+  const drink = example?.product ? `${example.product.name} (${example.variant.name})` : 'Caramel Macchiato (16oz)'
+  const price = example ? toDecimal(example.variant.price) : 185
 
-  const drink = example?.product
-    ? `${example.product.name} (${example.variant.name})`
-    : 'Caramel Macchiato (16oz)'
-
-  const samples = live.slice(0, 3).map((ingredient) => [
+  const samples: unknown[][] = live.slice(0, 3).map((ingredient, index) => [
     drink,
+    index === 0 ? exampleCategory : '',
+    index === 0 ? price : '',
     ingredient.name,
     ingredient.dimension === 'COUNT' ? 1 : ingredient.dimension === 'MASS' ? 10 : 100,
     BASE_UNIT[ingredient.dimension],
   ])
-
-  for (const sample of samples.length > 0
+  for (const row of samples.length > 0
     ? samples
-    : [['Caramel Macchiato (16oz)', 'Fresh Milk', 150, 'ml']]) {
-    sheet.addRow(sample)
+    : [[drink, exampleCategory, price, 'Jersey Full Cream Milk 1L', 150, 'ml']]) {
+    second.addRow(row)
   }
 
   // Formulas run past the samples so pasted rows price themselves too.
-  const table = `Ingredients!$A$2:$C$${LOOKUP_ROWS}`
+  const table = `Ingredients!$A$2:$F$${LOOKUP_ROWS}`
   for (let row = 2; row <= LOOKUP_ROWS; row++) {
-    const filled = `$B${row}<>""`
-    sheet.getCell(`E${row}`).value = {
-      formula: `IF(${filled},IFERROR(VLOOKUP($B${row},${table},3,FALSE),""),"")`,
+    const filled = `$D${row}<>""`
+    const bought = `VLOOKUP($D${row},${table},5,FALSE)`
+    // Cost per gram, millilitre or piece, straight from the Ingredients sheet.
+    second.getCell(`G${row}`).value = {
+      formula: `IF(${filled},IFERROR(VLOOKUP($D${row},${table},6,FALSE),""),"")`,
     }
-    sheet.getCell(`F${row}`).value = {
-      formula: `IF(AND(${filled},$C${row}<>""),IFERROR($C${row}*$E${row},""),"")`,
+    // A line in kilos or litres is scaled to match.
+    second.getCell(`H${row}`).value = {
+      formula: `IF(AND(${filled},$E${row}<>""),IFERROR($E${row}*${perBase(`$F${row}`)}*$G${row},""),"")`,
     }
     // Names the mismatch rather than just failing: a recipe in ml against an
-    // ingredient priced per gram is the error this column exists to catch.
-    sheet.getCell(`G${row}`).value = {
-      formula: `IF(${filled},IFERROR(IF(EXACT(LOWER($D${row}),LOWER(VLOOKUP($B${row},${table},2,FALSE))),"OK","CHECK UNIT"),"NOT FOUND"),"")`,
+    // ingredient bought in grams is the error this column exists to catch.
+    // Grams against a kilo purchase is fine - same kind of measurement.
+    second.getCell(`I${row}`).value = {
+      formula: `IF(${filled},IFERROR(IF(${dimensionOf(`$F${row}`)}=${dimensionOf(bought)},"OK","CHECK UNIT"),"NOT FOUND"),"")`,
     }
-    sheet.getCell(`E${row}`).numFmt = '#,##0.0000'
-    sheet.getCell(`F${row}`).numFmt = '#,##0.00'
+    second.getCell(`G${row}`).numFmt = '#,##0.0000'
+    second.getCell(`H${row}`).numFmt = '#,##0.00'
   }
-
-  sheet.getRow(1).font = { bold: true }
-  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE4DA' } }
-  RECIPE_TEMPLATE_COLUMNS.forEach((heading, index) => {
-    sheet.getColumn(index + 1).width = Math.max(16, heading.length + 4)
-  })
-  sheet.getColumn(1).width = 30
-  sheet.getColumn(2).width = 34
-  sheet.views = [{ state: 'frozen', ySplit: 1 }]
+  styleSheet(second, MENU_RECIPE_COLUMNS)
+  second.getColumn(1).width = 30
+  second.getColumn(4).width = 34
 
   const buffer = await book.xlsx.writeBuffer()
   return new Blob([buffer], {
@@ -305,7 +315,9 @@ export async function recipeTemplate(): Promise<Blob> {
 /** Locate each wanted heading, wherever the sheet happens to put it. */
 function headerMap(row: unknown[], wanted: readonly string[]): Map<string, number> {
   const found = new Map<string, number>()
-  const headings = row.map((cell) => text(cell).toLowerCase().replace(/\s+/g, ' '))
+  // Array.from, not map: ExcelJS leaves holes for empty cells, and map would
+  // leave the holes in place for findIndex to trip over below.
+  const headings = Array.from(row, (cell) => text(cell).toLowerCase().replace(/\s+/g, ' '))
   const target = (want: string): string => want.toLowerCase().replace(/\s+/g, ' ')
   const stripped = (want: string): string => target(want).replace(/\s*\(.*\)$/, '')
 

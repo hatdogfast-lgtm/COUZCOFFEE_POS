@@ -4,11 +4,10 @@ import { CheckCircle2, Download, TriangleAlert, Upload } from 'lucide-react'
 import {
   applyIngredients,
   applyMenu,
-  ingredientTemplate,
   INGREDIENT_COLUMNS,
   parseIngredients,
   parseMenu,
-  recipeTemplate,
+  menuTemplate,
   RECIPE_COLUMNS,
   type IngredientRow,
   type MenuParse,
@@ -50,7 +49,7 @@ export function ImportPanel() {
 
   async function download(which: Kind): Promise<void> {
     try {
-      const blob = which === 'INGREDIENTS' ? await ingredientTemplate() : await recipeTemplate()
+      const blob = await menuTemplate()
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
