@@ -23,10 +23,24 @@ import {
   type BackupInspection,
   type RestoreMode,
   type RestoreSyncChoice,
+  type SavedBackup,
 } from '../../db/backup.ts'
 import { Button, Field, Input } from '../../components/ui/primitives.tsx'
 import { useSession } from '../../app/providers.tsx'
 import { cn } from '../../lib/utils.ts'
+
+/**
+ * The tail of the "saved" message, naming where the file actually went.
+ *
+ * On a device the honest answer is a folder, and saying so is the difference
+ * between a backup someone can find and a backup someone hopes exists. In a
+ * browser there is nothing truthful to add: the download went wherever that
+ * browser sends downloads.
+ */
+function whereItWent(saved: SavedBackup): string {
+  if (!saved.location) return ''
+  return saved.shared ? ` and sent from ${saved.location}` : ` to ${saved.location}`
+}
 
 /**
  * Backup and restore.
@@ -86,10 +100,12 @@ export function BackupPanel() {
         return
       }
 
-      saveBackup(file)
+      const saved = await saveBackup(file)
       await rememberUpdateSent(at)
       setSentAt(at)
-      toast.success(`${file.manifest.totalRows.toLocaleString()} changes saved to a file.`)
+      toast.success(
+        `${file.manifest.totalRows.toLocaleString()} changes saved${whereItWent(saved)}.`,
+      )
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The update could not be made.')
     } finally {
@@ -102,8 +118,8 @@ export function BackupPanel() {
     setBusy(true)
     try {
       const file = await buildBackup(user.name)
-      saveBackup(file)
-      toast.success(`${file.manifest.totalRows.toLocaleString()} records saved.`)
+      const saved = await saveBackup(file)
+      toast.success(`${file.manifest.totalRows.toLocaleString()} records saved${whereItWent(saved)}.`)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The backup could not be made.')
     } finally {
@@ -132,7 +148,7 @@ export function BackupPanel() {
       // A safety copy first, always. If this turns out to be the wrong file,
       // it is the only way back to what was here a moment ago.
       if (mode === 'REPLACE') {
-        saveBackup(await buildBackup(`${user.name} (before restore)`))
+        await saveBackup(await buildBackup(`${user.name} (before restore)`))
       }
 
       const outcome = await restoreBackup({ inspection, mode, sync, user })

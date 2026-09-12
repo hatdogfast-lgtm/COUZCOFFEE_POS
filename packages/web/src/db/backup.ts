@@ -192,17 +192,80 @@ export function backupFileName(file: BackupFile): string {
   return `${name || 'pos'}-backup-${stamped}.json`
 }
 
-/** Hands the file to the browser. Used both by the button and by the safety copy. */
-export function saveBackup(file: BackupFile): void {
-  const url = URL.createObjectURL(backupBlob(file))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = backupFileName(file)
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
-  // Revoked on a later tick so the download has taken the handle first.
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
+export interface SavedBackup {
+  fileName: string
+  /**
+   * Where the file went, in words worth showing someone. Null in a browser,
+   * where the download is the browser's business and not ours to describe.
+   */
+  location: string | null
+  /** Whether the "send to" sheet was opened for it. */
+  shared: boolean
+}
+
+/**
+ * Put the file somewhere the person who asked for it can actually get at it.
+ *
+ * On the web this is a download and the browser decides the rest. Inside the
+ * Android app it cannot be: a link with a `download` attribute is handled by
+ * the WebView, which in practice means the file lands in a private directory
+ * belonging to the app, or nothing visible happens at all. Either way the
+ * backup is not where a person can find it, which for a backup is the same as
+ * not having one.
+ *
+ * So on a device the file is written to the app's Documents folder - browsable
+ * in Files, and still there tomorrow - and then handed to Android's share
+ * sheet, which is the "where do you want to send this" list: Drive, Gmail, a
+ * USB stick, the other till. Declining that sheet is not a failure; the file
+ * has already been written by then.
+ */
+export async function saveBackup(file: BackupFile): Promise<SavedBackup> {
+  const fileName = backupFileName(file)
+  const { Capacitor } = await import('@capacitor/core')
+
+  if (!Capacitor.isNativePlatform()) {
+    const url = URL.createObjectURL(backupBlob(file))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = fileName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // Revoked on a later tick so the download has taken the handle first.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    return { fileName, location: null, shared: false }
+  }
+
+  // Imported here rather than at the top of the module so the browser build
+  // never pulls the native plugins in, and so the tests do not have to stand
+  // up a device to check how a backup is assembled.
+  const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem')
+
+  const written = await Filesystem.writeFile({
+    path: fileName,
+    data: JSON.stringify(file, null, 2),
+    directory: Directory.Documents,
+    encoding: Encoding.UTF8,
+    recursive: true,
+  })
+
+  const saved: SavedBackup = { fileName, location: 'Documents', shared: false }
+
+  try {
+    const { Share } = await import('@capacitor/share')
+    await Share.share({
+      title: fileName,
+      text: `${file.manifest.businessName} backup, ${file.manifest.totalRows.toLocaleString()} records.`,
+      url: written.uri,
+      dialogTitle: 'Send this backup to',
+    })
+    saved.shared = true
+  } catch {
+    // Dismissing the sheet throws, and so does a device with nothing to share
+    // to. Neither is worth an error: the file is already on disk.
+  }
+
+  return saved
 }
 
 // ---------------------------------------------------------------- checking --

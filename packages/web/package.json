@@ -17,7 +17,9 @@
   "dependencies": {
     "@capacitor/android": "^6.2.1",
     "@capacitor/core": "^6.2.1",
+    "@capacitor/filesystem": "^6.0.4",
     "@capacitor/ios": "^6.2.1",
+    "@capacitor/share": "^6.0.4",
     "@pos/shared": "*",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-slot": "^1.1.2",
