@@ -532,11 +532,23 @@ async function applyIngredients(
   return { created: createdCount, updated: updatedCount, ids }
 }
 
-/** Packaging and resale items behave differently, so guess from the name. */
+/**
+ * Packaging and resale items behave differently, so guess from the name.
+ *
+ * Whole words only: "straw" is packaging, "strawberry" is not, and a shop
+ * whose syrups and jams are all filed under Packaging has a cost breakdown
+ * that means nothing.
+ */
 function guessStockClass(name: string): Ingredient['stockClass'] {
   const value = name.toLowerCase()
-  if (/(cup|lid|straw|sticker|plastic|paper bag|tissue|cutlery|packaging|box)/.test(value)) return 'PACKAGING'
-  if (/(cookie|croissant|cake|bread|sandwich|pastry|snack|chips)/.test(value)) return 'RETAIL'
+  if (
+    /\b(cups?|lids?|straws?|strawless|stickers?|plastic|paper bags?|tissues?|cutlery|packaging|box(es)?|wrappers?|grease ?proof|double wall)\b/.test(
+      value,
+    )
+  ) {
+    return 'PACKAGING'
+  }
+  if (/\b(cookies?|croissants?|cakes?|bread|sandwich(es)?|pastry|pastries|snacks?|chips)\b/.test(value)) return 'RETAIL'
   return 'INGREDIENT'
 }
 

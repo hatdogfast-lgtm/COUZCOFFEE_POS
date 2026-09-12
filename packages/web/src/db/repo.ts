@@ -127,16 +127,40 @@ export interface Availability {
   limitingIngredient: string | null
 }
 
+/** Add each line's quantity to a running total per ingredient. */
+function mergeUsage(into: Map<string, number>, entries: Iterable<IngredientUsage>): void {
+  for (const entry of entries) {
+    into.set(entry.ingredientId, (into.get(entry.ingredientId) ?? 0) + entry.baseQuantity)
+  }
+}
+
+/** What the chosen options take from stock, on top of the recipe. */
+function optionUsage(modifierOptionIds: string[], menu: MenuData): IngredientUsage[] {
+  const usage: IngredientUsage[] = []
+  for (const optionId of modifierOptionIds) {
+    for (const options of menu.optionsByGroup.values()) {
+      const option = options.find((entry) => entry.id === optionId)
+      if (!option) continue
+      usage.push(...(option.consumption ?? []))
+    }
+  }
+  return usage
+}
+
 /**
  * How many of a variant the current stock can actually produce.
  *
  * A product with no recipe is always sellable - a pastry bought in and resold
- * is not blocked because nobody wrote a recipe for it.
+ * is not blocked because nobody wrote a recipe for it. An add-on that takes
+ * from stock counts as well, so a jam that has run out blocks the toast it
+ * would have gone on.
  */
 export function availabilityOf(
   variantId: string,
   menu: MenuData,
   stock: StockMap,
+  /** The options chosen with it, whose own consumption is needed too. */
+  modifierOptionIds: string[] = [],
   /**
    * The shop's low-stock rule and how fast things are being used.
    *
@@ -146,25 +170,26 @@ export function availabilityOf(
   lowStock?: { settings: BusinessSettings | null | undefined; rates: Map<string, number> },
 ): Availability {
   const recipe = menu.recipeByVariant.get(variantId)
-  if (!recipe) return { makeable: Infinity, outOfStock: false, low: false, limitingIngredient: null }
+  const components = recipe ? (menu.recipeIngredients.get(recipe.id) ?? []) : []
 
-  const components = menu.recipeIngredients.get(recipe.id) ?? []
-  if (components.length === 0) {
-    return { makeable: Infinity, outOfStock: false, low: false, limitingIngredient: null }
-  }
+  // Per unit, on each ingredient: the recipe's required lines plus whatever
+  // the chosen options add. Merged, so an extra shot on top of the recipe's
+  // own beans is judged against the beans once, at the combined amount.
+  const demand = new Map<string, number>()
+  mergeUsage(demand, components.filter((component) => !component.optional))
+  mergeUsage(demand, optionUsage(modifierOptionIds, menu))
 
   let makeable = Infinity
   let limiting: string | null = null
   let low = false
 
-  for (const component of components) {
-    if (component.optional) continue
-    const ingredient = menu.ingredientsById.get(component.ingredientId)
+  for (const [ingredientId, baseQuantity] of demand) {
+    const ingredient = menu.ingredientsById.get(ingredientId)
     if (!ingredient || !ingredient.trackStock) continue
-    if (component.baseQuantity <= 0) continue
+    if (baseQuantity <= 0) continue
 
-    const onHand = stock.get(component.ingredientId) ?? 0
-    const possible = Math.floor(onHand / component.baseQuantity)
+    const onHand = stock.get(ingredientId) ?? 0
+    const possible = Math.floor(onHand / baseQuantity)
     if (possible < makeable) {
       makeable = possible
       limiting = ingredient.name
@@ -195,21 +220,8 @@ export function consumptionFor(
   const usage = new Map<string, number>()
 
   const recipe = menu.recipeByVariant.get(variantId)
-  if (recipe) {
-    for (const component of menu.recipeIngredients.get(recipe.id) ?? []) {
-      usage.set(component.ingredientId, (usage.get(component.ingredientId) ?? 0) + component.baseQuantity)
-    }
-  }
-
-  for (const optionId of modifierOptionIds) {
-    for (const options of menu.optionsByGroup.values()) {
-      const option = options.find((entry) => entry.id === optionId)
-      if (!option) continue
-      for (const item of option.consumption ?? []) {
-        usage.set(item.ingredientId, (usage.get(item.ingredientId) ?? 0) + item.baseQuantity)
-      }
-    }
-  }
+  if (recipe) mergeUsage(usage, menu.recipeIngredients.get(recipe.id) ?? [])
+  mergeUsage(usage, optionUsage(modifierOptionIds, menu))
 
   return [...usage].map(([ingredientId, baseQuantity]) => ({ ingredientId, baseQuantity }))
 }

@@ -160,21 +160,28 @@ function ProductTile({
   )
 
   // A product is only truly unavailable when none of its sizes can be made.
-  const availabilities = variants.map((variant) => availabilityOf(variant.id, menu, stock, lowStock))
+  const availabilities = variants.map((variant) => availabilityOf(variant.id, menu, stock, [], lowStock))
   const soldOut =
     !product.available || (availabilities.length > 0 && availabilities.every((entry) => entry.outOfStock))
   const low =
     !soldOut && availabilities.some((entry) => entry.low || (entry.makeable !== Infinity && entry.makeable <= 5))
 
+  // Out of stock only takes the tile out of reach when the shop has asked for
+  // that. With the rule off the tile still wears the badge, and the sheet
+  // behind it still says how short it is, but a sale goes through - which is
+  // the only honest answer while the shelves have not been counted yet.
+  const blocking = lowStock.settings?.blockSaleWhenOutOfStock !== false
+  const blocked = !product.available || (soldOut && blocking)
+
   return (
     <button
       type="button"
       onClick={onSelect}
-      disabled={soldOut}
+      disabled={blocked}
       className={cn(
         'flex min-h-[5.25rem] flex-col justify-between rounded-md border border-line bg-surface p-2.5 text-left transition-colors press no-select',
         'hover:border-brand-light',
-        soldOut && 'opacity-50 hover:border-line',
+        blocked && 'opacity-50 hover:border-line',
       )}
     >
       <div className="min-w-0">

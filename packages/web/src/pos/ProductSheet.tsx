@@ -63,13 +63,6 @@ export function ProductSheet({
     setChosen(defaults)
   }, [open, product, variants, menu])
 
-  const selectedOptionIds = useMemo(() => Object.values(chosen).flat(), [chosen])
-
-  const availability = useMemo(
-    () => (variantId ? availabilityOf(variantId, menu, stock) : null),
-    [variantId, menu, stock],
-  )
-
   const variant = variants.find((entry) => entry.id === variantId)
 
   const modifierLines = useMemo<SaleItemModifier[]>(() => {
@@ -80,8 +73,10 @@ export function ProductSheet({
       for (const optionId of optionIds) {
         const option = options.find((entry) => entry.id === optionId)
         if (!group || !option) continue
-        // A default with no price effect is noise on a receipt.
-        if (option.isDefault && option.priceDelta === 0) continue
+        // A default that neither charges nor takes from stock is noise on a
+        // receipt. One that takes from stock stays on the line, because the
+        // line is what the ledger later deducts from.
+        if (option.isDefault && option.priceDelta === 0 && (option.consumption ?? []).length === 0) continue
         result.push({
           groupId,
           groupName: group.name,
@@ -93,6 +88,15 @@ export function ProductSheet({
     }
     return result
   }, [chosen, menu])
+
+  // Costing and availability read the same options the line carries, so the
+  // cost booked and the stock taken can never describe different drinks.
+  const lineOptionIds = useMemo(() => modifierLines.map((modifier) => modifier.optionId), [modifierLines])
+
+  const availability = useMemo(
+    () => (variantId ? availabilityOf(variantId, menu, stock, lineOptionIds) : null),
+    [variantId, menu, stock, lineOptionIds],
+  )
 
   const unitPrice = variant?.price ?? 0
   const modifiersTotal = modifierLines.reduce((sum, modifier) => sum + modifier.priceDelta, 0)
@@ -137,7 +141,7 @@ export function ProductSheet({
       unitPrice: variant.price,
       modifiers: modifierLines,
       note: note.trim(),
-      unitCogs: currentUnitCost(variant.id, selectedOptionIds, menu),
+      unitCogs: currentUnitCost(variant.id, lineOptionIds, menu),
       taxable: product.taxable,
     })
     onClose()
@@ -202,7 +206,7 @@ export function ProductSheet({
                 <h3 className="text-[0.8125rem] font-medium text-ink-muted">Size</h3>
                 <div className="grid grid-cols-3 gap-2">
                   {variants.map((entry) => {
-                    const entryStock = availabilityOf(entry.id, menu, stock)
+                    const entryStock = availabilityOf(entry.id, menu, stock, lineOptionIds)
                     const soldOut = entryStock.outOfStock
                     return (
                       <button

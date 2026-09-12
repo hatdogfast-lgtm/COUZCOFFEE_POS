@@ -126,6 +126,25 @@ describe('importing ingredients', () => {
     expect(stored.find((row) => row.name === 'Fresh Milk')?.stockClass).toBe('INGREDIENT')
   })
 
+  test('a strawberry is not a straw, and a wrapper is packaging', async () => {
+    const file = await sheetFile('Ingredients', [
+      INGREDIENT_HEADER,
+      ['ZNW-STRAWBERRY SYRUP 1.25KG', '1L', 115, 1000, 'ml', ''],
+      ['STRAWBERRY JAM (DOKING)', 'pack', 320, 3000, 'grams', ''],
+      ['Indiv boba straw black 21cm 100PCS', 'pack', 50, 100, 'pcs', ''],
+      ['MARBY WRAPPER 25 PCS', 'pack', 75, 100, 'pcs', ''],
+      ['DOUBLE WALL BLACK 12OZ', 'pcs', 180, 50, 'pcs', ''],
+    ])
+    await applyMenu(await parseMenu(file), 'USER-1')
+
+    const classOf = new Map((await db.ingredients.toArray()).map((row) => [row.name, row.stockClass]))
+    expect(classOf.get('ZNW-STRAWBERRY SYRUP 1.25KG')).toBe('INGREDIENT')
+    expect(classOf.get('STRAWBERRY JAM (DOKING)')).toBe('INGREDIENT')
+    expect(classOf.get('Indiv boba straw black 21cm 100PCS')).toBe('PACKAGING')
+    expect(classOf.get('MARBY WRAPPER 25 PCS')).toBe('PACKAGING')
+    expect(classOf.get('DOUBLE WALL BLACK 12OZ')).toBe('PACKAGING')
+  })
+
   test('re-importing updates the cost rather than duplicating the item', async () => {
     const first = await sheetFile('Ingredients', [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']])
     await applyMenu(await parseMenu(first), 'USER-1')

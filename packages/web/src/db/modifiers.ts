@@ -1,4 +1,4 @@
-import type { AuditLog, ModifierGroup, ModifierOption, ModifierSelection, Money } from '@pos/shared'
+import type { AuditLog, IngredientUsage, ModifierGroup, ModifierOption, ModifierSelection, Money } from '@pos/shared'
 import { db } from './database.ts'
 import { commit, created, deleted, revise, stamp, updated } from './write.ts'
 import type { PendingWrite } from './write.ts'
@@ -252,9 +252,31 @@ export async function addModifierOption(input: {
   return option
 }
 
+/**
+ * Check what an option says it takes from stock.
+ *
+ * Quantities arrive already in base units. Refused rather than tidied, because
+ * a line the till would silently skip is worse than one the owner is told about.
+ */
+async function checkConsumption(consumption: IngredientUsage[]): Promise<IngredientUsage[]> {
+  const seen = new Set<string>()
+  const checked: IngredientUsage[] = []
+  for (const entry of consumption) {
+    const ingredient = await db.ingredients.get(entry.ingredientId)
+    if (!ingredient || ingredient.deletedAt !== null) throw new Error('That ingredient is no longer in the shop.')
+    if (!Number.isFinite(entry.baseQuantity) || entry.baseQuantity <= 0) {
+      throw new Error('Quantity must be more than zero.')
+    }
+    if (seen.has(entry.ingredientId)) throw new Error(`${ingredient.name} is listed twice.`)
+    seen.add(entry.ingredientId)
+    checked.push({ ingredientId: entry.ingredientId, baseQuantity: entry.baseQuantity })
+  }
+  return checked
+}
+
 export async function updateModifierOption(input: {
   option: ModifierOption
-  changes: Partial<Pick<ModifierOption, 'name' | 'priceDelta' | 'active' | 'isDefault'>>
+  changes: Partial<Pick<ModifierOption, 'name' | 'priceDelta' | 'active' | 'isDefault' | 'consumption'>>
   userId: string
 }): Promise<ModifierOption> {
   const now = Date.now()
@@ -264,27 +286,38 @@ export async function updateModifierOption(input: {
     if (changes.name.length === 0) throw new Error('Give the option a name.')
   }
   if (changes.priceDelta !== undefined) changes.priceDelta = Math.round(changes.priceDelta)
+  if (changes.consumption !== undefined) changes.consumption = await checkConsumption(changes.consumption)
+
+  // Built on what is stored rather than on the caller's copy: a change that
+  // lands behind another (a price saved on the way to the Default toggle)
+  // must not carry the old price back in with it.
+  const current = (await db.modifierOptions.get(input.option.id)) ?? input.option
 
   const writes: PendingWrite[] = []
 
   // Only one answer can be the default, so choosing a new one releases the old.
   if (changes.isDefault === true) {
-    const siblings = alive(await db.modifierOptions.where('groupId').equals(input.option.groupId).toArray())
+    const siblings = alive(await db.modifierOptions.where('groupId').equals(current.groupId).toArray())
     for (const sibling of siblings) {
-      if (sibling.id !== input.option.id && sibling.isDefault) {
+      if (sibling.id !== current.id && sibling.isDefault) {
         writes.push(updated('modifierOptions', revise(sibling, { isDefault: false }, now)))
       }
     }
   }
 
-  const revised = revise<ModifierOption>(input.option, changes, now)
+  const revised = revise<ModifierOption>(current, changes, now)
   writes.push(updated('modifierOptions', revised))
   writes.push(
     audit({
-      entityId: input.option.groupId,
+      entityId: current.groupId,
       action: 'MODIFIER_OPTION_UPDATED',
       userId: input.userId,
-      before: { name: input.option.name, priceDelta: input.option.priceDelta, active: input.option.active },
+      before: {
+        name: current.name,
+        priceDelta: current.priceDelta,
+        active: current.active,
+        consumption: current.consumption,
+      },
       after: changes,
       reason: `Changed "${revised.name}"`,
       now,
