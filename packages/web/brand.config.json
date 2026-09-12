@@ -7,14 +7,14 @@
   "tagline": "Good coffee, good couz.",
   "description": "Offline-first point of sale, inventory and recipe costing.",
 
-  "themeColor": "#7A4A2C",
-  "backgroundColor": "#F2E4D0",
+  "themeColor": "#3B2416",
+  "backgroundColor": "#F8F3EA",
 
   "logo": "assets/logo.png",
 
   "$comment_icon": "The home-screen icon. Square, 1024x1024 ideally. Kept separate from `logo` on purpose: a wide wordmark that reads beautifully on a receipt turns to mush in a 48-pixel circle, so the launcher usually wants a simpler mark. Point both at the same file if you want them identical.",
   "launcherIcon": "assets/launcher.png",
-  "launcherBackground": "#7A4A2C",
+  "launcherBackground": "#3B2416",
 
   "$comment_zoom": "How much of the launcher canvas the artwork fills, 0-1. Android crops adaptive icons to roughly the middle two thirds, so anything above ~0.66 risks losing its edges.",
   "launcherZoom": 0.62

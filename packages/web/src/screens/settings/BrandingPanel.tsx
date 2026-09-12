@@ -45,8 +45,8 @@ const TEXT_FIELDS: Array<{ key: keyof Draft; label: string; hint?: string; max: 
 ]
 
 const COLOURS: Array<{ key: 'primaryColor' | 'secondaryColor' | 'accentColor'; label: string; detail: string }> = [
-  { key: 'primaryColor', label: 'Primary', detail: 'Buttons, the active tab, anything the eye should land on.' },
-  { key: 'secondaryColor', label: 'Secondary', detail: 'Highlights and softer accents.' },
+  { key: 'primaryColor', label: 'Primary', detail: 'Chips, the active tab, headings — the colour the shop is known by.' },
+  { key: 'secondaryColor', label: 'Secondary', detail: 'The Charge button and every other main action.' },
   { key: 'accentColor', label: 'Accent', detail: 'Reserved for positive figures like profit and margin.' },
 ]
 
@@ -248,7 +248,7 @@ export function BrandingPanel() {
             disabled={!mayEdit || busy}
             onClick={() =>
               void apply(
-                { primaryColor: '#7A4A2C', secondaryColor: '#C18A4A', accentColor: '#168054' },
+                { primaryColor: '#3B2416', secondaryColor: '#C88A4A', accentColor: '#58734C' },
                 'Back to the original colours.',
               )
             }

@@ -123,15 +123,25 @@ function hexToRgb(hex) {
 }
 
 async function writeIcons() {
-  const source = path.join(root, brand.launcherIcon)
-  if (!existsSync(source)) {
-    skipped.push(`launcher icons (no ${brand.launcherIcon} - the existing ones are left alone)`)
+  const resDir = path.join(root, 'android/app/src/main/res')
+  if (!existsSync(resDir)) {
+    skipped.push('launcher colour and icons (no android project here)')
     return
   }
 
-  const resDir = path.join(root, 'android/app/src/main/res')
-  if (!existsSync(resDir)) {
-    skipped.push('launcher icons (no android project here)')
+  // The launcher background needs no artwork, so it is written whether or
+  // not the icons are - otherwise a colour change waits on a file that may
+  // never arrive.
+  const colourFile = path.join(resDir, 'values/ic_launcher_background.xml')
+  await writeFile(
+    colourFile,
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${brand.launcherBackground}</color>\n</resources>\n`,
+  )
+  done.push(`launcher background colour ${brand.launcherBackground}`)
+
+  const source = path.join(root, brand.launcherIcon)
+  if (!existsSync(source)) {
+    skipped.push(`launcher icons (no ${brand.launcherIcon} - the existing ones are left alone)`)
     return
   }
 
@@ -174,12 +184,6 @@ async function writeIcons() {
 
     await writeFile(path.join(dir, 'ic_launcher_foreground.png'), foreground)
   }
-
-  const colourFile = path.join(resDir, 'values/ic_launcher_background.xml')
-  await writeFile(
-    colourFile,
-    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <color name="ic_launcher_background">${brand.launcherBackground}</color>\n</resources>\n`,
-  )
 
   done.push(`launcher icons from ${brand.launcherIcon} (5 densities, adaptive + legacy)`)
 }
@@ -225,12 +229,64 @@ async function writeWebIcons() {
   done.push('web and PWA icons (4 sizes)')
 }
 
+
+/* ---------------------------------------------------------------- splash -- */
+
+/**
+ * The splash screens, from the shop's logo on the launcher colour.
+ *
+ * Eleven files: a default, and portrait and landscape at five densities. The
+ * logo sits centred at two fifths of the short side - large enough to read,
+ * small enough that a wide wordmark clears the edges on a phone in portrait.
+ */
+const SPLASHES = [
+  { dir: 'drawable', w: 480, h: 320 },
+  { dir: 'drawable-port-mdpi', w: 320, h: 480 },
+  { dir: 'drawable-port-hdpi', w: 480, h: 800 },
+  { dir: 'drawable-port-xhdpi', w: 720, h: 1280 },
+  { dir: 'drawable-port-xxhdpi', w: 960, h: 1600 },
+  { dir: 'drawable-port-xxxhdpi', w: 1280, h: 1920 },
+  { dir: 'drawable-land-mdpi', w: 480, h: 320 },
+  { dir: 'drawable-land-hdpi', w: 800, h: 480 },
+  { dir: 'drawable-land-xhdpi', w: 1280, h: 720 },
+  { dir: 'drawable-land-xxhdpi', w: 1600, h: 960 },
+  { dir: 'drawable-land-xxxhdpi', w: 1920, h: 1280 },
+]
+
+async function writeSplash() {
+  const source = path.join(root, brand.logo)
+  if (!existsSync(source)) {
+    skipped.push(`splash screens (no ${brand.logo} - the existing ones are left alone)`)
+    return
+  }
+  const resDir = path.join(root, 'android/app/src/main/res')
+  if (!existsSync(resDir)) {
+    skipped.push('splash screens (no android project here)')
+    return
+  }
+
+  const background = hexToRgb(brand.launcherBackground)
+  for (const splash of SPLASHES) {
+    const dir = path.join(resDir, splash.dir)
+    await mkdir(dir, { recursive: true })
+    const side = Math.round(Math.min(splash.w, splash.h) * 0.4)
+    const art = await squareSource(source, side)
+    const out = await sharp({ create: { width: splash.w, height: splash.h, channels: 4, background } })
+      .composite([{ input: art, gravity: 'center' }])
+      .png()
+      .toBuffer()
+    await writeFile(path.join(dir, 'splash.png'), out)
+  }
+  done.push(`splash screens from ${brand.logo} (${SPLASHES.length} sizes)`)
+}
+
 /* ------------------------------------------------------------------ main -- */
 
 await writeAppName()
 await writeCapacitorName()
 await writeIcons()
 await writeWebIcons()
+await writeSplash()
 
 console.log(`\nBranded as "${brand.appName}" for ${brand.businessName}.\n`)
 for (const line of done) console.log(`  updated  ${line}`)

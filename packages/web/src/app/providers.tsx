@@ -53,6 +53,14 @@ interface SettingsContextValue {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null)
 
+/** Every colour a till has ever been seeded with. Any of these means "not chosen". */
+const SEEDED_COLOURS = new Set(['#7a4a2c', '#c18a4a', '#3b2416', '#c88a4a'])
+
+function chosen(hex: string): string | null {
+  if (SEEDED_COLOURS.has(hex.trim().toLowerCase())) return null
+  return hexToRgbChannels(hex)
+}
+
 /**
  * Applies the owner's branding to the document.
  *
@@ -63,19 +71,32 @@ const SettingsContext = createContext<SettingsContextValue | null>(null)
 function useBranding(settings: BusinessSettings | null): void {
   useEffect(() => {
     if (!settings) return
-    const root = document.documentElement
     const { branding } = settings
 
-    const brand = hexToRgbChannels(branding.primaryColor)
-    if (brand) {
-      root.style.setProperty('--brand', brand)
-      root.style.setProperty('--brand-ink', readableInk(branding.primaryColor))
+    // An earlier version wrote the colours inline on <html>; clear those so a
+    // shop that ran it does not keep stale values over the stylesheet.
+    const root = document.documentElement
+    for (const name of ['--brand', '--brand-ink', '--accent', '--accent-ink']) root.style.removeProperty(name)
+
+    // A colour the till was seeded with is not one the owner chose, so the
+    // palette in the stylesheet stands. That covers shops seeded before the
+    // 2026 palette as well as after it.
+    const rules: string[] = []
+    const brand = chosen(branding.primaryColor)
+    if (brand) rules.push(`--brand:${brand}`, `--brand-ink:${readableInk(branding.primaryColor)}`)
+    const accent = chosen(branding.secondaryColor)
+    if (accent) rules.push(`--accent:${accent}`, `--accent-ink:${readableInk(branding.secondaryColor)}`)
+
+    // Custom colours apply to the light theme only. The dark theme is
+    // designed around the palette, and a colour picked against cream rarely
+    // survives a dark ground.
+    let style = document.getElementById('branding') as HTMLStyleElement | null
+    if (!style) {
+      style = document.createElement('style')
+      style.id = 'branding'
+      document.head.appendChild(style)
     }
-    const accent = hexToRgbChannels(branding.secondaryColor)
-    if (accent) {
-      root.style.setProperty('--accent', accent)
-      root.style.setProperty('--accent-ink', readableInk(branding.secondaryColor))
-    }
+    style.textContent = rules.length > 0 ? `:root[data-theme='light']{${rules.join(';')}}` : ''
 
     document.title = branding.businessName || 'Point of Sale'
   }, [settings])
