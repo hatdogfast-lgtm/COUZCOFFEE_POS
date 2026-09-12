@@ -3,8 +3,13 @@ import {
   fromDecimal,
   isUnit,
   toBase,
+  toDecimal,
   unitDimension,
+  type Dimension,
   type Ingredient,
+  type Money,
+  type Product,
+  type ProductVariant,
   type Unit,
   BASE_UNIT,
   COST_PRECISION,
@@ -45,19 +50,39 @@ export const INGREDIENT_COLUMNS = [
 ] as const
 
 /**
- * The columns the importer reads.
+ * The columns the importer reads from a recipes sheet.
  *
  * Matched by heading rather than by position, so extra columns in a shop's own
- * sheet are simply ignored and the order does not matter. 'Size' is optional:
- * a drink written as "Caramel Macchiato (16oz)" carries its size in brackets.
+ * sheet are simply ignored. 'Size' is optional: a drink written as
+ * "Caramel Macchiato (16oz)" carries its size in brackets. 'Category' and
+ * 'Selling Price' matter only for a drink that does not exist yet - they say
+ * where it goes on the menu and what it rings up at.
  */
 export const RECIPE_COLUMNS = [
   'Drink Name',
   'Size',
+  'Category',
+  'Selling Price (₱)',
   'Ingredient Name',
   'Quantity Used',
   'Quantity Unit',
 ] as const
+
+/** The recipes sheet as the downloadable template lays it out. */
+export const MENU_RECIPE_COLUMNS = [
+  'Drink Name',
+  'Category',
+  'Selling Price (₱)',
+  'Ingredient Name',
+  'Quantity Used',
+  'Quantity Unit',
+  'Cost per Unit (AUTO)',
+  'Total Ingredient Cost',
+  'Unit Check',
+] as const
+
+/** Where a new drink goes when its row does not say. */
+export const DEFAULT_CATEGORY = 'Drinks'
 
 /** The full layout written into the downloadable template. */
 export const RECIPE_TEMPLATE_COLUMNS = [
@@ -370,18 +395,14 @@ export interface IngredientRow {
   existingId: string | null
 }
 
-export async function parseIngredients(file: File): Promise<ParseResult<IngredientRow>> {
-  const found = locate(await readWorkbook(file), INGREDIENT_COLUMNS)
-  if (!found) {
-    throw new Error(
-      `Could not find the expected column headings. The first row should contain: ${INGREDIENT_COLUMNS.join(', ')}.`,
-    )
-  }
+function empty<T>(): ParseResult<T> {
+  return { rows: [], problems: [], duplicates: 0, totalRows: 0 }
+}
+
+function parseIngredientSheet(found: Located, existing: Ingredient[]): ParseResult<IngredientRow> {
   const { sheet, headerIndex, columns } = found
   const problems: RowProblem[] = []
   const rows: IngredientRow[] = []
-
-  const existing = (await db.ingredients.toArray()).filter((row) => row.deletedAt === null)
   const byName = new Map(existing.map((row) => [key(row.name), row]))
   const seen = new Set<string>()
   let duplicates = 0
@@ -391,38 +412,43 @@ export async function parseIngredients(file: File): Promise<ParseResult<Ingredie
       const column = columns.get(want)
       return column === undefined ? '' : raw[column]
     }
+    const problem = (message: string): void => {
+      problems.push({ sheet: sheet.name, row: at, message })
+    }
 
     const name = text(cell('Ingredient Name'))
     if (name.length === 0) continue // A blank line is a spacer, not an error.
 
+    const unitRaw = text(cell('Total Quantity Unit'))
+    const quantityRaw = text(cell('Total Quantity'))
+    const costRaw = text(cell('Total Cost (₱)'))
+    // A name with nothing beside it is a heading the owner typed - "ICE",
+    // "CUPS/STRAW" - to group the rows below, not an ingredient with no unit.
+    if (unitRaw === '' && quantityRaw === '' && costRaw === '' && text(cell('Purchase Unit')) === '') continue
+
     const k = key(name)
     if (seen.has(k)) {
       duplicates++
-      problems.push({ sheet: sheet.name, row: at, message: `"${name}" appears more than once in this file.` })
+      problem(`"${name}" appears more than once in this file.`)
       continue
     }
     seen.add(k)
 
-    const unitRaw = text(cell('Total Quantity Unit'))
     const unit = normaliseUnit(unitRaw)
     if (!unit) {
-      problems.push({
-        sheet: sheet.name,
-        row: at,
-        message: `"${unitRaw || 'blank'}" is not a unit we recognise. Use g, kg, ml, L or pcs.`,
-      })
+      problem(`"${unitRaw || 'blank'}" is not a unit we recognise. Use g, kg, ml, L or pcs.`)
       continue
     }
 
-    const totalQuantity = num(cell('Total Quantity'))
+    const totalQuantity = num(quantityRaw)
     if (!Number.isFinite(totalQuantity) || totalQuantity <= 0) {
-      problems.push({ sheet: sheet.name, row: at, message: 'Total quantity must be a number greater than zero.' })
+      problem('Total quantity must be a number greater than zero.')
       continue
     }
 
-    const totalCost = num(cell('Total Cost (₱)'))
+    const totalCost = num(costRaw)
     if (!Number.isFinite(totalCost) || totalCost < 0) {
-      problems.push({ sheet: sheet.name, row: at, message: 'Total cost must be a number.' })
+      problem('Total cost must be a number.')
       continue
     }
 
@@ -440,6 +466,17 @@ export async function parseIngredients(file: File): Promise<ParseResult<Ingredie
   }
 
   return { rows, problems, duplicates, totalRows: rows.length + problems.length }
+}
+
+export async function parseIngredients(file: File): Promise<ParseResult<IngredientRow>> {
+  const found = locate(await readWorkbook(file), INGREDIENT_COLUMNS)
+  if (!found) {
+    throw new Error(
+      `Could not find the expected column headings. The first row should contain: ${INGREDIENT_COLUMNS.join(', ')}.`,
+    )
+  }
+  const existing = (await db.ingredients.toArray()).filter((row) => row.deletedAt === null)
+  return parseIngredientSheet(found, existing)
 }
 
 export async function applyIngredients(rows: IngredientRow[]): Promise<{ created: number; updated: number }> {
@@ -502,13 +539,46 @@ function guessStockClass(name: string): Ingredient['stockClass'] {
 // ------------------------------------------------------------------ recipes --
 
 export interface RecipeRow {
+  /** Joins the line to its drink in `MenuParse.drinks`. */
+  drinkKey: string
   productName: string
   size: string
   ingredientName: string
   quantity: number
   unit: Unit
-  ingredientId: string
-  variantId: string
+  /** Null when the ingredient is on this file's Ingredients sheet and does not exist yet. */
+  ingredientId: string | null
+}
+
+/**
+ * One drink at one size, and whether it exists yet.
+ *
+ * A null id means the import will create it. A new product needs a category
+ * and a new size needs a price; both come from the sheet, and a drink with no
+ * price is refused rather than put on the menu for free.
+ */
+export interface DrinkPlan {
+  key: string
+  name: string
+  size: string
+  productId: string | null
+  variantId: string | null
+  /** The category a new product goes in. Null for an existing product. */
+  category: string | null
+  /** What a new size rings up at, in minor units. Null for an existing size. */
+  price: Money | null
+  /** Recipe lines that will be saved for it. */
+  lines: number
+}
+
+export interface MenuParse {
+  ingredients: ParseResult<IngredientRow>
+  recipes: ParseResult<RecipeRow>
+  drinks: DrinkPlan[]
+  /** Categories named on the sheet that do not exist yet, spelled as first seen. */
+  newCategories: string[]
+  /** Which sheets the file turned out to have. */
+  sheets: { ingredients: boolean; recipes: boolean }
 }
 
 /** "Caramel Macchiato (16oz)" -> name and size, when they share one column. */
@@ -518,133 +588,275 @@ export function splitDrinkName(raw: string): { name: string; size: string } {
   return { name: raw.trim(), size: '' }
 }
 
-export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> {
-  const found = locate(await readWorkbook(file), RECIPE_COLUMNS)
-  if (!found) {
-    throw new Error(
-      `Could not find the expected column headings. The first row should contain: ${RECIPE_COLUMNS.join(', ')}.`,
-    )
-  }
+interface KnownIngredient {
+  /** Null for one that is on this file's Ingredients sheet and not yet in the shop. */
+  id: string | null
+  name: string
+  dimension: Dimension
+  displayUnit: string
+}
+
+interface MenuContext {
+  ingredients: Map<string, KnownIngredient>
+  products: Product[]
+  variants: ProductVariant[]
+}
+
+function parseRecipeSheet(
+  found: Located,
+  context: MenuContext,
+): { result: ParseResult<RecipeRow>; drinks: DrinkPlan[] } {
   const { sheet, headerIndex, columns } = found
   const problems: RowProblem[] = []
-  const rows: RecipeRow[] = []
-
-  const [ingredients, products, variants] = await Promise.all([
-    db.ingredients.toArray(),
-    db.products.toArray(),
-    db.productVariants.toArray(),
-  ])
-  const ingredientByName = new Map(
-    ingredients.filter((row) => row.deletedAt === null).map((row) => [key(row.name), row]),
-  )
-  const liveProducts = products.filter((row) => row.deletedAt === null)
-  const liveVariants = variants.filter((row) => row.deletedAt === null)
-
+  const candidates: Array<{ at: number; row: RecipeRow }> = []
+  const drinks = new Map<string, DrinkPlan>()
+  const firstRow = new Map<string, number>()
+  const priceRow = new Map<string, number>()
   const seen = new Set<string>()
   let duplicates = 0
+  let lastDrink = ''
 
   for (const { number: at, cells: raw } of sheet.rows.slice(headerIndex + 1)) {
     const cell = (want: (typeof RECIPE_COLUMNS)[number]): unknown => {
       const column = columns.get(want)
       return column === undefined ? '' : raw[column]
     }
+    const problem = (message: string): void => {
+      problems.push({ sheet: sheet.name, row: at, message })
+    }
 
-    const drink = text(cell('Drink Name'))
+    let drink = text(cell('Drink Name'))
     const ingredientName = text(cell('Ingredient Name'))
     if (drink.length === 0 && ingredientName.length === 0) continue
     // A section heading like "COFFEE" with nothing else on the line.
     if (ingredientName.length === 0) continue
+    // A line with no drink of its own belongs to the drink above it.
+    if (drink.length === 0) drink = lastDrink
+    if (drink.length === 0) {
+      problem('There is no Drink Name on this row or on any row above it.')
+      continue
+    }
+    lastDrink = drink
 
     const parsed = splitDrinkName(drink)
     const size = text(cell('Size')) || parsed.size
+    const product = context.products.find((entry) => key(entry.name) === key(parsed.name))
+    const forProduct = product ? context.variants.filter((entry) => entry.productId === product.id) : []
+    const variant = !product
+      ? undefined
+      : size
+        ? forProduct.find((entry) => key(entry.name) === key(size))
+        : (forProduct.find((entry) => entry.isDefault) ?? forProduct[0])
+    const sizeName = variant?.name ?? (size || 'Regular')
+    const drinkKey = `${key(parsed.name)}|${key(sizeName)}`
 
-    const product = liveProducts.find((entry) => key(entry.name) === key(parsed.name))
-    if (!product) {
-      problems.push({ sheet: sheet.name, row: at, message: `There is no product called "${parsed.name}".` })
-      continue
+    let plan = drinks.get(drinkKey)
+    if (!plan) {
+      plan = {
+        key: drinkKey,
+        name: product?.name ?? parsed.name,
+        size: sizeName,
+        productId: product?.id ?? null,
+        variantId: variant?.id ?? null,
+        category: null,
+        price: null,
+        lines: 0,
+      }
+      drinks.set(drinkKey, plan)
+      firstRow.set(drinkKey, at)
     }
 
-    const forProduct = liveVariants.filter((entry) => entry.productId === product.id)
-    const variant = size
-      ? forProduct.find((entry) => key(entry.name) === key(size))
-      : forProduct.find((entry) => entry.isDefault) ?? forProduct[0]
+    // Category and price describe the drink rather than the line, so the
+    // first row to name them speaks for every row of that drink.
+    const category = text(cell('Category'))
+    if (category.length > 0 && plan.category === null) plan.category = category
 
-    if (!variant) {
-      problems.push({
-        sheet: sheet.name,
-        row: at,
-        message: `"${parsed.name}" has no size called "${size}". It has: ${forProduct.map((entry) => entry.name).join(', ') || 'none'}.`,
-      })
-      continue
+    const priceRaw = text(cell('Selling Price (₱)'))
+    if (priceRaw.length > 0) {
+      const price = num(priceRaw)
+      if (!Number.isFinite(price) || price < 0) {
+        problem(`"${priceRaw}" is not a price.`)
+        continue
+      }
+      const minor = fromDecimal(price)
+      if (plan.price === null) {
+        plan.price = minor
+        priceRow.set(drinkKey, at)
+      } else if (plan.price !== minor) {
+        problem(
+          `${plan.name} (${plan.size}) is priced ${price} here but ${toDecimal(plan.price)} on row ${priceRow.get(drinkKey)}.`,
+        )
+        continue
+      }
     }
 
-    const ingredient = ingredientByName.get(key(ingredientName))
+    const ingredient = context.ingredients.get(key(ingredientName))
     if (!ingredient) {
-      problems.push({
-        sheet: sheet.name,
-        row: at,
-        message: `There is no ingredient called "${ingredientName}". Import ingredients first.`,
-      })
+      problem(`There is no ingredient called "${ingredientName}". Add it to the Ingredients sheet.`)
       continue
     }
 
     const unitRaw = text(cell('Quantity Unit'))
     const unit = normaliseUnit(unitRaw)
     if (!unit) {
-      problems.push({ sheet: sheet.name, row: at, message: `"${unitRaw || 'blank'}" is not a unit we recognise.` })
+      problem(`"${unitRaw || 'blank'}" is not a unit we recognise. Use g, kg, ml, L or pcs.`)
       continue
     }
     if (unitDimension(unit) !== ingredient.dimension) {
-      problems.push({
-        sheet: sheet.name,
-        row: at,
-        message: `${ingredient.name} is measured in ${ingredient.displayUnit}, so it cannot be used in ${unit}.`,
-      })
+      problem(`${ingredient.name} is measured in ${ingredient.displayUnit}, so it cannot be used in ${unit}.`)
       continue
     }
 
     const quantity = num(cell('Quantity Used'))
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      problems.push({ sheet: sheet.name, row: at, message: 'Quantity used must be a number greater than zero.' })
+      problem('Quantity used must be a number greater than zero.')
       continue
     }
 
-    const lineKey = `${variant.id}|${ingredient.id}`
+    const lineKey = `${drinkKey}|${key(ingredientName)}`
     if (seen.has(lineKey)) {
       duplicates++
-      problems.push({ sheet: sheet.name, row: at, message: `${ingredient.name} is listed twice for ${drink}.` })
+      problem(`${ingredient.name} is listed twice for ${drink}.`)
       continue
     }
     seen.add(lineKey)
 
-    rows.push({
-      productName: product.name,
-      size: variant.name,
-      ingredientName: ingredient.name,
-      quantity,
-      unit,
-      ingredientId: ingredient.id,
-      variantId: variant.id,
+    candidates.push({
+      at,
+      row: {
+        drinkKey,
+        productName: plan.name,
+        size: plan.size,
+        ingredientName: ingredient.name,
+        quantity,
+        unit,
+        ingredientId: ingredient.id,
+      },
     })
   }
 
-  return { rows, problems, duplicates, totalRows: rows.length + problems.length }
+  // A size that does not exist yet needs a price, and without one none of its
+  // lines go in: a drink on the menu at ₱0 is worse than a drink not on it.
+  const unpriced = new Set<string>()
+  for (const plan of drinks.values()) {
+    if (plan.variantId !== null || plan.price !== null) continue
+    // A drink whose every line already failed has been reported; do not add to it.
+    if (!candidates.some((entry) => entry.row.drinkKey === plan.key)) continue
+    unpriced.add(plan.key)
+    problems.push({
+      sheet: sheet.name,
+      row: firstRow.get(plan.key)!,
+      message: `${plan.name} (${plan.size}) is new, so it needs a Selling Price.`,
+    })
+  }
+  const rows = candidates.filter((entry) => !unpriced.has(entry.row.drinkKey)).map((entry) => entry.row)
+
+  const plans: DrinkPlan[] = []
+  for (const plan of drinks.values()) {
+    plan.lines = rows.filter((row) => row.drinkKey === plan.key).length
+    if (plan.lines === 0) continue
+    // Only a product being created needs a category, and only a size being
+    // created needs a price; what exists already keeps its own.
+    plan.category = plan.productId === null ? (plan.category ?? DEFAULT_CATEGORY) : null
+    if (plan.variantId !== null) plan.price = null
+    plans.push(plan)
+  }
+
+  problems.sort((a, b) => a.row - b.row)
+  return { result: { rows, problems, duplicates, totalRows: rows.length + problems.length }, drinks: plans }
 }
 
-export async function applyRecipes(rows: RecipeRow[], userId: string): Promise<{ recipes: number }> {
-  const byVariant = new Map<string, RecipeComponent[]>()
-  for (const row of rows) {
-    const list = byVariant.get(row.variantId) ?? []
-    list.push({
-      ingredientId: row.ingredientId,
-      baseQuantity: toBase(row.quantity, row.unit),
-      optional: false,
+/**
+ * Read a menu workbook: an Ingredients sheet, a Recipes sheet, or both.
+ *
+ * Recipes are checked against the shop's ingredients *and* the ones on this
+ * file's own Ingredients sheet, so a new drink and the things it is made of
+ * can arrive together. Nothing is written here.
+ */
+export async function parseMenu(file: File): Promise<MenuParse> {
+  const sheets = await readWorkbook(file)
+  const ingredientSheet = locate(sheets, INGREDIENT_COLUMNS)
+  const recipeSheet = locate(sheets, RECIPE_COLUMNS)
+  if (!ingredientSheet && !recipeSheet) {
+    throw new Error(
+      `Could not find the expected column headings. An Ingredients sheet starts with: ${INGREDIENT_COLUMNS.join(', ')}. A Recipes sheet starts with: ${MENU_RECIPE_COLUMNS.slice(0, 6).join(', ')}.`,
+    )
+  }
+
+  const [dbIngredients, products, variants, categories] = await Promise.all([
+    db.ingredients.toArray(),
+    db.products.toArray(),
+    db.productVariants.toArray(),
+    db.categories.toArray(),
+  ])
+  const liveIngredients = dbIngredients.filter((row) => row.deletedAt === null)
+
+  const ingredients = ingredientSheet ? parseIngredientSheet(ingredientSheet, liveIngredients) : empty<IngredientRow>()
+
+  const known = new Map<string, KnownIngredient>(
+    liveIngredients.map((row) => [
+      key(row.name),
+      { id: row.id, name: row.name, dimension: row.dimension, displayUnit: row.displayUnit },
+    ]),
+  )
+  // The file's own ingredients count too, and win over the shop's where both
+  // have one - the sheet is what is about to be written.
+  for (const row of ingredients.rows) {
+    known.set(key(row.name), {
+      id: row.existingId,
+      name: row.name,
+      dimension: unitDimension(row.unit),
+      displayUnit: row.unit,
     })
-    byVariant.set(row.variantId, list)
+  }
+
+  const recipes = recipeSheet
+    ? parseRecipeSheet(recipeSheet, {
+        ingredients: known,
+        products: products.filter((row) => row.deletedAt === null),
+        variants: variants.filter((row) => row.deletedAt === null),
+      })
+    : { result: empty<RecipeRow>(), drinks: [] as DrinkPlan[] }
+
+  // Active only, to match applyMenu and the app's own createCategory: an
+  // archived "Coffee" is not somewhere a new drink can be filed, so a sheet
+  // naming it gets a fresh, visible one.
+  const categoryKeys = new Set(
+    categories.filter((row) => row.deletedAt === null && row.active).map((row) => key(row.name)),
+  )
+  const newCategories: string[] = []
+  for (const drink of recipes.drinks) {
+    if (drink.productId !== null || drink.category === null) continue
+    if (categoryKeys.has(key(drink.category))) continue
+    categoryKeys.add(key(drink.category))
+    newCategories.push(drink.category)
+  }
+
+  return {
+    ingredients,
+    recipes: recipes.result,
+    drinks: recipes.drinks,
+    newCategories,
+    sheets: { ingredients: ingredientSheet !== null, recipes: recipeSheet !== null },
+  }
+}
+
+export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> {
+  return (await parseMenu(file)).recipes
+}
+
+export async function applyRecipes(parse: MenuParse, userId: string): Promise<{ recipes: number }> {
+  const variantByKey = new Map(parse.drinks.map((drink) => [drink.key, drink.variantId]))
+  const byVariant = new Map<string, RecipeComponent[]>()
+  for (const row of parse.recipes.rows) {
+    const variantId = variantByKey.get(row.drinkKey)
+    if (!variantId || !row.ingredientId) continue
+    const list = byVariant.get(variantId) ?? []
+    list.push({ ingredientId: row.ingredientId, baseQuantity: toBase(row.quantity, row.unit), optional: false })
+    byVariant.set(variantId, list)
   }
 
   const variants = await db.productVariants.toArray()
-
   for (const [variantId, components] of byVariant) {
     const variant = variants.find((entry) => entry.id === variantId)
     if (!variant) continue

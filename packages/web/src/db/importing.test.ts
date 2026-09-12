@@ -15,8 +15,10 @@ import { loadRecipeFor } from './recipes.ts'
 import {
   applyIngredients,
   applyRecipes,
+  DEFAULT_CATEGORY,
   normaliseUnit,
   parseIngredients,
+  parseMenu,
   parseRecipes,
   splitDrinkName,
 } from './importing.ts'
@@ -177,35 +179,39 @@ describe('importing ingredients', () => {
   })
 })
 
-describe('importing recipes', () => {
-  async function seedMenu(): Promise<void> {
-    const category = stamp<Category>({ name: 'Hot', colour: '#000', icon: 'Coffee', sortOrder: 0, active: true })
-    const product = stamp<Product>({
-      categoryId: category.id, name: 'Caramel Macchiato', description: '', sku: '', imageDataUrl: null,
-      active: true, available: true, sortOrder: 0, taxable: true, modifierGroupIds: [],
-    })
-    const variant = stamp<ProductVariant>({
-      productId: product.id, name: '16oz', price: fromDecimal(185), sortOrder: 0, active: true, isDefault: true,
-    })
-    const milk = stamp<Ingredient>({
-      name: 'Jersey Full Cream Milk 1L', sku: '', stockClass: 'INGREDIENT', dimension: 'VOLUME',
-      displayUnit: 'ml', costRate: costRateFromPurchase(fromDecimal(85), 1000, 'ml'), supplierId: null,
-      lowStockThresholdBase: 0, trackStock: true, active: true,
-    })
-    const beans = stamp<Ingredient>({
-      name: 'Nescafe Gold', sku: '', stockClass: 'INGREDIENT', dimension: 'MASS',
-      displayUnit: 'g', costRate: costRateFromPurchase(fromDecimal(294), 100, 'g'), supplierId: null,
-      lowStockThresholdBase: 0, trackStock: true, active: true,
-    })
-    await commit([
-      created('categories', category),
-      created('products', product),
-      created('productVariants', variant),
-      created('ingredients', milk),
-      created('ingredients', beans),
-    ])
-  }
+/** A shop with one drink in one size, and the two things it is made of. */
+async function seedMenu(): Promise<void> {
+  const category = stamp<Category>({ name: 'Hot', colour: '#000', icon: 'Coffee', sortOrder: 0, active: true })
+  const product = stamp<Product>({
+    categoryId: category.id, name: 'Caramel Macchiato', description: '', sku: '', imageDataUrl: null,
+    active: true, available: true, sortOrder: 0, taxable: true, modifierGroupIds: [],
+  })
+  const variant = stamp<ProductVariant>({
+    productId: product.id, name: '16oz', price: fromDecimal(185), sortOrder: 0, active: true, isDefault: true,
+  })
+  const milk = stamp<Ingredient>({
+    name: 'Jersey Full Cream Milk 1L', sku: '', stockClass: 'INGREDIENT', dimension: 'VOLUME',
+    displayUnit: 'ml', costRate: costRateFromPurchase(fromDecimal(85), 1000, 'ml'), supplierId: null,
+    lowStockThresholdBase: 0, trackStock: true, active: true,
+  })
+  const beans = stamp<Ingredient>({
+    name: 'Nescafe Gold', sku: '', stockClass: 'INGREDIENT', dimension: 'MASS',
+    displayUnit: 'g', costRate: costRateFromPurchase(fromDecimal(294), 100, 'g'), supplierId: null,
+    lowStockThresholdBase: 0, trackStock: true, active: true,
+  })
+  await commit([
+    created('categories', category),
+    created('products', product),
+    created('productVariants', variant),
+    created('ingredients', milk),
+    created('ingredients', beans),
+  ])
+}
 
+/** The combined template's recipes sheet, minus the three computed columns. */
+const MENU_HEADER = ['Drink Name', 'Category', 'Selling Price (₱)', 'Ingredient Name', 'Quantity Used', 'Quantity Unit']
+
+describe('importing recipes', () => {
   test('matches a drink, its size and its ingredients', async () => {
     await seedMenu()
     const file = await sheetFile('Recipes', [
@@ -219,7 +225,7 @@ describe('importing recipes', () => {
     expect(result.rows).toHaveLength(2)
 
     const variant = (await db.productVariants.toArray())[0]!
-    await applyRecipes(result.rows, 'USER-1')
+    await applyRecipes(await parseMenu(file), 'USER-1')
 
     const { components } = await loadRecipeFor(variant.id)
     expect(components).toHaveLength(2)
@@ -238,7 +244,7 @@ describe('importing recipes', () => {
     expect(result.rows[0]?.size).toBe('16oz')
   })
 
-  test('refuses a drink or ingredient it has never heard of', async () => {
+  test('refuses an ingredient it has never heard of, but not a drink', async () => {
     await seedMenu()
     const file = await sheetFile('Recipes', [
       RECIPE_HEADER,
@@ -248,10 +254,10 @@ describe('importing recipes', () => {
     ])
 
     const result = await parseRecipes(file)
+    // Both unknown drinks are new sizes with no price, so they are refused for that reason.
     expect(result.rows).toHaveLength(0)
-    expect(result.problems.some((p) => /no product called/i.test(p.message))).toBe(true)
+    expect(result.problems.filter((p) => /needs a Selling Price/i.test(p.message))).toHaveLength(2)
     expect(result.problems.some((p) => /no ingredient called/i.test(p.message))).toBe(true)
-    expect(result.problems.some((p) => /no size called/i.test(p.message))).toBe(true)
   })
 
   test('refuses a unit that does not match how the ingredient is measured', async () => {
@@ -270,8 +276,8 @@ describe('importing recipes', () => {
     await seedMenu()
     const rows = [RECIPE_HEADER, ['Caramel Macchiato', '16oz', 'Jersey Full Cream Milk 1L', 150, 'ml']]
 
-    await applyRecipes((await parseRecipes(await sheetFile('R', rows))).rows, 'USER-1')
-    await applyRecipes((await parseRecipes(await sheetFile('R', rows))).rows, 'USER-1')
+    await applyRecipes(await parseMenu(await sheetFile('R', rows)), 'USER-1')
+    await applyRecipes(await parseMenu(await sheetFile('R', rows)), 'USER-1')
 
     const variant = (await db.productVariants.toArray())[0]!
     const { components } = await loadRecipeFor(variant.id)
@@ -345,5 +351,189 @@ describe('reading the workbook', () => {
     const result = await parseIngredients(file)
     expect(result.problems).toEqual([])
     expect(result.rows[0]?.name).toBe('Fresh Milk')
+  })
+})
+
+describe('importing the whole menu', () => {
+  test('a drink it has never heard of is planned as a new product with a priced size', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']],
+      Recipes: [
+        MENU_HEADER,
+        ['Spanish Latte (16oz)', 'Coffee', 165, 'Fresh Milk', 150, 'ml'],
+        ['Spanish Latte (16oz)', '', '', 'Fresh Milk', 150, 'ml'],
+      ],
+    })
+    const parse = await parseMenu(file)
+
+    expect(parse.sheets).toEqual({ ingredients: true, recipes: true })
+    expect(parse.ingredients.rows).toHaveLength(1)
+    // The second line names the same ingredient twice for the same drink.
+    expect(parse.recipes.problems).toHaveLength(1)
+    expect(parse.recipes.rows).toHaveLength(1)
+    expect(parse.drinks).toEqual([
+      {
+        key: 'spanish latte|16oz',
+        name: 'Spanish Latte',
+        size: '16oz',
+        productId: null,
+        variantId: null,
+        category: 'Coffee',
+        price: fromDecimal(165),
+        lines: 1,
+      },
+    ])
+    expect(parse.newCategories).toEqual(['Coffee'])
+  })
+
+  test('an ingredient on the same file counts, even though it is not in the shop yet', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['Oat Milk', '1L', 120, 1000, 'ml', '']],
+      Recipes: [MENU_HEADER, ['Oat Latte (12oz)', 'Coffee', 150, 'Oat Milk', 200, 'ml']],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.recipes.problems).toEqual([])
+    expect(parse.recipes.rows[0]?.ingredientId).toBeNull()
+    expect(parse.recipes.rows[0]?.ingredientName).toBe('Oat Milk')
+  })
+
+  test('a new drink with no selling price is refused, once, and its lines stay out', async () => {
+    await seedMenu()
+    const file = await workbookFile({
+      Recipes: [
+        MENU_HEADER,
+        ['Unicorn Frappe (16oz)', 'Drinks', '', 'Jersey Full Cream Milk 1L', 150, 'ml'],
+        ['Unicorn Frappe (16oz)', '', '', 'Nescafe Gold', 3, 'g'],
+        ['Caramel Macchiato (16oz)', '', '', 'Jersey Full Cream Milk 1L', 150, 'ml'],
+      ],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.recipes.rows).toHaveLength(1)
+    expect(parse.recipes.rows[0]?.productName).toBe('Caramel Macchiato')
+    expect(parse.recipes.problems).toEqual([
+      { sheet: 'Recipes', row: 2, message: expect.stringMatching(/needs a Selling Price/i) },
+    ])
+    expect(parse.drinks.map((drink) => drink.name)).toEqual(['Caramel Macchiato'])
+  })
+
+  test('a price is money and must agree with itself', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']],
+      Recipes: [
+        MENU_HEADER,
+        ['Latte (16oz)', 'Coffee', '₱165.00', 'Fresh Milk', 150, 'ml'],
+        ['Latte (16oz)', '', 175, 'Fresh Milk', 150, 'ml'],
+        ['Mocha (16oz)', 'Coffee', 'lots', 'Fresh Milk', 150, 'ml'],
+      ],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.drinks.find((drink) => drink.name === 'Latte')?.price).toBe(fromDecimal(165))
+    expect(parse.recipes.problems.map((problem) => problem.row)).toEqual([3, 4])
+    expect(parse.recipes.problems[0]?.message).toMatch(/priced 175 here but 165/)
+    expect(parse.recipes.problems[1]?.message).toMatch(/not a price/i)
+  })
+
+  test('a new size on an existing drink is planned against that product', async () => {
+    await seedMenu()
+    const product = (await db.products.toArray())[0]!
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['caramel  macchiato (12oz)', '', 145, 'Jersey Full Cream Milk 1L', 120, 'ml']],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.recipes.problems).toEqual([])
+    expect(parse.drinks).toEqual([
+      {
+        key: 'caramel macchiato|12oz',
+        name: 'Caramel Macchiato',
+        size: '12oz',
+        productId: product.id,
+        variantId: null,
+        category: null,
+        price: fromDecimal(145),
+        lines: 1,
+      },
+    ])
+  })
+
+  test('an existing size keeps its own price and category, whatever the sheet says', async () => {
+    await seedMenu()
+    const variant = (await db.productVariants.toArray())[0]!
+    const file = await workbookFile({
+      Recipes: [MENU_HEADER, ['Caramel Macchiato (16oz)', 'Specials', 999, 'Jersey Full Cream Milk 1L', 150, 'ml']],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.drinks[0]).toMatchObject({ variantId: variant.id, price: null, category: null })
+    expect(parse.newCategories).toEqual([])
+  })
+
+  test('a blank category means Drinks, and an existing category is matched loosely', async () => {
+    await seedMenu()
+    const file = await workbookFile({
+      Recipes: [
+        MENU_HEADER,
+        ['Choco Milk (16oz)', '', 120, 'Jersey Full Cream Milk 1L', 200, 'ml'],
+        ['Flat White (12oz)', ' hot ', 140, 'Jersey Full Cream Milk 1L', 100, 'ml'],
+      ],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.drinks.map((drink) => drink.category)).toEqual([DEFAULT_CATEGORY, 'hot'])
+    // "Hot" already exists; only Drinks is new.
+    expect(parse.newCategories).toEqual([DEFAULT_CATEGORY])
+  })
+
+  test('a line with no drink name belongs to the drink above it', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', ''], ['Sugar', '1kg', 60, 1000, 'g', '']],
+      Recipes: [
+        MENU_HEADER,
+        ['Latte (16oz)', 'Coffee', 165, 'Fresh Milk', 150, 'ml'],
+        ['', '', '', 'Sugar', 10, 'g'],
+      ],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.recipes.problems).toEqual([])
+    expect(parse.recipes.rows.map((row) => row.drinkKey)).toEqual(['latte|16oz', 'latte|16oz'])
+    expect(parse.drinks[0]?.lines).toBe(2)
+  })
+
+  test('section headings on the ingredients sheet are not errors', async () => {
+    const file = await workbookFile({
+      Ingredients: [
+        INGREDIENT_HEADER,
+        ['Fresh Milk', '1L', 85, 1000, 'ml', ''],
+        ['ICE', '', '', '', '', ''],
+        ['CUPS/STRAW'],
+        ['Pet Cup 16oz', '50 pcs', 150, 50, 'pcs', ''],
+      ],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.ingredients.problems).toEqual([])
+    expect(parse.ingredients.rows.map((row) => row.name)).toEqual(['Fresh Milk', 'Pet Cup 16oz'])
+  })
+
+  test('a file with only one of the sheets imports that sheet', async () => {
+    await seedMenu()
+    const old = await sheetFile('Recipes', [
+      RECIPE_HEADER,
+      ['Caramel Macchiato', '16oz', 'Jersey Full Cream Milk 1L', 150, 'ml'],
+    ])
+    const parse = await parseMenu(old)
+    expect(parse.sheets).toEqual({ ingredients: false, recipes: true })
+    expect(parse.ingredients.rows).toEqual([])
+    expect(parse.recipes.rows).toHaveLength(1)
+  })
+
+  test('a file with neither sheet is refused with an explanation', async () => {
+    const file = await sheetFile('Sheet1', [['Thing', 'Whatever'], ['x', 'y']])
+    await expect(parseMenu(file)).rejects.toThrow(/column headings/i)
+  })
+
+  test('names are matched with doubled spaces collapsed', async () => {
+    const file = await workbookFile({
+      Ingredients: [INGREDIENT_HEADER, ['DA VINCI SYRUP  CARAMEL', 'bottle', 500, 750, 'ml', '']],
+      Recipes: [MENU_HEADER, ['Caramel Latte (16oz)', 'Coffee', 170, 'da vinci syrup caramel ', 20, 'ml']],
+    })
+    const parse = await parseMenu(file)
+    expect(parse.recipes.problems).toEqual([])
   })
 })

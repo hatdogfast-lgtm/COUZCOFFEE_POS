@@ -7,12 +7,12 @@ import {
   ingredientTemplate,
   INGREDIENT_COLUMNS,
   parseIngredients,
-  parseRecipes,
+  parseMenu,
   recipeTemplate,
   RECIPE_COLUMNS,
   type IngredientRow,
+  type MenuParse,
   type ParseResult,
-  type RecipeRow,
 } from '../../db/importing.ts'
 import { Button } from '../../components/ui/primitives.tsx'
 import { useSession } from '../../app/providers.tsx'
@@ -35,11 +35,11 @@ export function ImportPanel() {
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState('')
   const [ingredients, setIngredients] = useState<ParseResult<IngredientRow> | null>(null)
-  const [recipes, setRecipes] = useState<ParseResult<RecipeRow> | null>(null)
+  const [recipes, setRecipes] = useState<MenuParse | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
   const mayImport = can('recipe.import') || can('inventory.adjust')
-  const result = kind === 'INGREDIENTS' ? ingredients : recipes
+  const result = kind === 'INGREDIENTS' ? ingredients : (recipes?.recipes ?? null)
 
   function reset(): void {
     setIngredients(null)
@@ -73,7 +73,7 @@ export function ImportPanel() {
         setIngredients(await parseIngredients(file))
         setRecipes(null)
       } else {
-        setRecipes(await parseRecipes(file))
+        setRecipes(await parseMenu(file))
         setIngredients(null)
       }
     } catch (error) {
@@ -92,7 +92,7 @@ export function ImportPanel() {
         const outcome = await applyIngredients(ingredients.rows)
         toast.success(`${outcome.created} added, ${outcome.updated} updated.`)
       } else if (recipes) {
-        const outcome = await applyRecipes(recipes.rows, user?.id ?? '')
+        const outcome = await applyRecipes(recipes, user?.id ?? '')
         toast.success(`${outcome.recipes} recipes saved.`)
       }
       reset()
@@ -239,7 +239,7 @@ export function ImportPanel() {
                     <span className="shrink-0 text-ink-muted">{row.existingId ? 'updates' : 'new'}</span>
                   </li>
                 ))}
-                {(kind === 'RECIPES' ? recipes?.rows ?? [] : []).slice(0, 40).map((row, index) => (
+                {(kind === 'RECIPES' ? (recipes?.recipes.rows ?? []) : []).slice(0, 40).map((row, index) => (
                   <li key={index} className="flex justify-between gap-3 px-3 py-2">
                     <span className="truncate text-ink">
                       {row.productName} <span className="text-ink-subtle">{row.size}</span>
