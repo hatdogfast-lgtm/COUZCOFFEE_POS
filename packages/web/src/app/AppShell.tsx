@@ -11,7 +11,6 @@ import { ReportsScreen } from '../screens/ReportsScreen.tsx'
 import { LedgerScreen } from '../screens/LedgerScreen.tsx'
 import { StaffScreen } from '../screens/StaffScreen.tsx'
 import { SettingsScreen, SETTINGS_PERMISSIONS } from '../screens/SettingsScreen.tsx'
-import { Button } from '../components/ui/primitives.tsx'
 import { useSession, useSettings } from './providers.tsx'
 import { cn } from '../lib/utils.ts'
 
@@ -23,7 +22,9 @@ import { cn } from '../lib/utils.ts'
  * back button work without any extra handling.
  *
  * Navigation is filtered by what the signed-in person may actually do, so a
- * cashier is never shown a door they cannot open.
+ * cashier is never shown a door they cannot open. It sits at the bottom on a
+ * phone and a tablet - where a thumb is - and moves to a rail on a laptop,
+ * where a mouse has no thumb zone.
  */
 
 interface NavItem {
@@ -54,20 +55,18 @@ export function AppShell() {
   return (
     <HashRouter>
       <div className="flex h-full flex-col bg-canvas">
-        <ConnectionBanner />
-
-        <header className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-4 py-2.5 pad-safe-top">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+        <header className="flex shrink-0 items-center gap-3 bg-chrome px-3 pb-2.5 pt-2 text-chrome-ink pad-safe-top">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             {settings?.branding.logoDataUrl ? (
-              <img src={settings.branding.logoDataUrl} alt="" className="h-9 w-9 rounded-xl object-cover" />
+              <img src={settings.branding.logoDataUrl} alt="" className="h-8 w-8 rounded-md object-cover" />
             ) : (
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-sm font-semibold text-brand-ink">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-ink">
                 {businessName.slice(0, 1).toUpperCase()}
               </div>
             )}
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{businessName}</p>
-              <p className="truncate text-xs text-ink-subtle">
+              <p className="truncate text-[0.8125rem] font-semibold leading-tight">{businessName}</p>
+              <p className="truncate text-[0.6875rem] leading-tight text-chrome-muted">
                 {user?.name}
                 {user ? ` · ${roleLabel(user.role)}` : ''}
               </p>
@@ -75,16 +74,23 @@ export function AppShell() {
           </div>
 
           {/* Anyone may see the status; only some roles may open what is behind it. */}
-          <ConnectionBadge compact onClick={can('sync.view') ? () => setShowSync(true) : undefined} />
-          <Button variant="ghost" size="icon" onClick={signOut} aria-label="Sign out">
-            <LogOut className="h-5 w-5" aria-hidden="true" />
-          </Button>
+          <ConnectionBadge compact onChrome onClick={can('sync.view') ? () => setShowSync(true) : undefined} />
+          <button
+            type="button"
+            onClick={signOut}
+            aria-label="Sign out"
+            className="flex h-9 w-9 items-center justify-center rounded-md text-chrome-muted transition-colors hover:bg-chrome-ink/10 hover:text-chrome-ink"
+          >
+            <LogOut className="h-[1.125rem] w-[1.125rem]" aria-hidden="true" />
+          </button>
         </header>
 
+        <ConnectionBanner />
+
         <div className="flex min-h-0 flex-1">
-          {/* A rail on a counter screen; the bottom bar takes over on a phone. */}
+          {/* A rail on a laptop; the bottom bar takes over below 1024px. */}
           {items.length > 1 ? (
-            <nav className="hidden w-[5.5rem] shrink-0 flex-col gap-1 border-r border-line bg-surface p-2 lg:flex">
+            <nav className="hidden w-[5rem] shrink-0 flex-col gap-0.5 border-r border-line-strong bg-surface p-1.5 lg:flex">
               {items.map((item) => (
                 <RailLink key={item.to} item={item} />
               ))}
@@ -132,7 +138,7 @@ export function AppShell() {
         </div>
 
         {items.length > 1 ? (
-          <nav className="flex shrink-0 border-t border-line bg-surface pad-safe-bottom lg:hidden">
+          <nav className="flex shrink-0 border-t border-line-strong bg-surface pad-safe-bottom lg:hidden">
             {items.map((item) => (
               <TabLink key={item.to} item={item} />
             ))}
@@ -153,13 +159,13 @@ function RailLink({ item }: { item: NavItem }) {
       end={item.to === '/'}
       className={({ isActive }) =>
         cn(
-          'flex flex-col items-center gap-1 rounded-xl px-2 py-3 text-center transition-colors no-select press',
+          'flex flex-col items-center gap-1 rounded-md px-1 py-2.5 text-center transition-colors no-select press',
           isActive ? 'bg-brand-soft text-brand' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
         )
       }
     >
       <Icon className="h-5 w-5" aria-hidden="true" />
-      <span className="text-[0.6875rem] font-medium">{item.label}</span>
+      <span className="micro">{item.label}</span>
     </NavLink>
   )
 }
@@ -172,13 +178,13 @@ function TabLink({ item }: { item: NavItem }) {
       end={item.to === '/'}
       className={({ isActive }) =>
         cn(
-          'flex flex-1 flex-col items-center gap-1 py-2.5 transition-colors no-select touch-target',
+          'flex flex-1 flex-col items-center gap-0.5 pb-1.5 pt-2 transition-colors no-select touch-target',
           isActive ? 'text-brand' : 'text-ink-subtle',
         )
       }
     >
       <Icon className="h-5 w-5" aria-hidden="true" />
-      <span className="text-[0.6875rem] font-medium">{item.label}</span>
+      <span className="micro text-[0.625rem]">{item.label}</span>
     </NavLink>
   )
 }

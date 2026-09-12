@@ -20,6 +20,15 @@ const TONE_CLASSES: Record<string, string> = {
   danger: 'bg-danger/12 text-danger',
 }
 
+/** On the espresso header: a cream chip when all is well, a solid one when it is not. */
+const CHROME_CHIP_CLASSES: Record<string, string> = {
+  online: 'border-chrome-ink/20 bg-chrome-ink/10 text-chrome-ink',
+  offline: 'border-chrome-ink/20 bg-chrome-ink/10 text-chrome-ink',
+  pending: 'border-honey bg-honey text-honey-ink',
+  warning: 'border-honey bg-honey text-honey-ink',
+  danger: 'border-danger bg-danger text-danger-ink',
+}
+
 const DOT_CLASSES: Record<string, string> = {
   online: 'bg-positive',
   pending: 'bg-warning',
@@ -45,7 +54,16 @@ function iconFor(state: ConnectionState) {
   }
 }
 
-export function ConnectionBadge({ onClick, compact = false }: { onClick?: () => void; compact?: boolean }) {
+export function ConnectionBadge({
+  onClick,
+  compact = false,
+  onChrome = false,
+}: {
+  onClick?: () => void
+  compact?: boolean
+  /** Rendered on the espresso header, where a cream chip reads and a tinted one does not. */
+  onChrome?: boolean
+}) {
   const status = useSyncStatus()
   const copy = CONNECTION_COPY[status.state]
   const Icon = iconFor(status.state)
@@ -67,20 +85,37 @@ export function ConnectionBadge({ onClick, compact = false }: { onClick?: () => 
     <Component
       {...(onClick ? { type: 'button' as const, onClick } : {})}
       className={cn(
-        'group flex items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors touch-target',
-        onClick ? 'hover:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-brand/40' : 'cursor-default',
+        'group flex items-center gap-2 text-left transition-colors touch-target',
+        onChrome ? cn('micro rounded-sm border px-2 py-1', CHROME_CHIP_CLASSES[tone]) : 'rounded-md px-3 py-2',
+        onClick
+          ? onChrome
+            ? 'hover:opacity-90 focus-visible:ring-2 focus-visible:ring-chrome-ink/40'
+            : 'hover:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-brand/40'
+          : 'cursor-default',
       )}
       title={copy.detail}
     >
-      <span className={cn('relative flex h-8 w-8 items-center justify-center rounded-lg', TONE_CLASSES[tone])}>
-        <Icon className={cn('h-4 w-4', status.state === 'SYNCING' && 'animate-spin')} aria-hidden="true" />
+      <span
+        className={cn(
+          'relative flex items-center justify-center rounded-md',
+          onChrome ? 'h-5 w-5 bg-transparent' : cn('h-8 w-8', TONE_CLASSES[tone]),
+        )}
+      >
+        <Icon
+          className={cn(onChrome ? 'h-3.5 w-3.5' : 'h-4 w-4', status.state === 'SYNCING' && 'animate-spin')}
+          aria-hidden="true"
+        />
         {status.realtimeConnected ? (
           <span
-            className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-positive ring-2 ring-surface"
+            className={cn(
+              'absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-positive ring-2',
+              onChrome ? 'ring-chrome' : 'ring-surface',
+            )}
             title="Receiving live updates"
           />
         ) : null}
       </span>
+      {onChrome ? <span>{copy.label}</span> : null}
 
       {!compact ? (
         <span className="min-w-0">
@@ -118,13 +153,16 @@ export function ConnectionBanner() {
   return (
     <div
       className={cn(
-        'flex items-center gap-3 border-b border-line px-4 py-2.5 text-sm',
-        status.state === 'CONFLICT' ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning',
-        status.state === 'OFFLINE' && 'bg-surface-sunken text-ink-muted',
+        'flex items-center gap-3 border-b border-l-2 border-line px-4 py-2.5 text-sm text-ink',
+        status.state === 'CONFLICT' ? 'border-l-danger bg-danger/10' : 'border-l-honey bg-honey/15',
+        status.state === 'OFFLINE' && 'border-l-line-strong bg-surface-sunken text-ink-muted',
       )}
       role="status"
     >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <Icon
+        className={cn('h-4 w-4 shrink-0', status.state === 'CONFLICT' ? 'text-danger' : 'text-warning')}
+        aria-hidden="true"
+      />
       <p className="min-w-0 flex-1">
         <span className="font-medium">{copy.label}.</span>{' '}
         <span className="text-ink-muted">{copy.detail}</span>
