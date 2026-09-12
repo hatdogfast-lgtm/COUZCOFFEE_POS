@@ -34,7 +34,7 @@ export function MenuScreen() {
       { id: 'OPTIONS', label: 'Options', allowed: can('product.view') },
       { id: 'RECIPES', label: 'Recipes', allowed: can('recipe.view') },
       { id: 'INGREDIENTS', label: 'Ingredients', allowed: can('inventory.view') },
-      { id: 'IMPORT', label: 'Import', allowed: can('recipe.import') || can('inventory.adjust') },
+      { id: 'IMPORT', label: 'Import', allowed: can('recipe.import') },
     ]
     return all.filter((entry) => entry.allowed)
   }, [can])

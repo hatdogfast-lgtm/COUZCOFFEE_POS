@@ -98,7 +98,6 @@ export interface ParseResult<T> {
   rows: T[]
   problems: RowProblem[]
   duplicates: number
-  totalRows: number
 }
 
 function text(value: unknown): string {
@@ -410,7 +409,7 @@ export interface IngredientRow {
 }
 
 function empty<T>(): ParseResult<T> {
-  return { rows: [], problems: [], duplicates: 0, totalRows: 0 }
+  return { rows: [], problems: [], duplicates: 0 }
 }
 
 function parseIngredientSheet(found: Located, existing: Ingredient[]): ParseResult<IngredientRow> {
@@ -479,21 +478,10 @@ function parseIngredientSheet(found: Located, existing: Ingredient[]): ParseResu
     })
   }
 
-  return { rows, problems, duplicates, totalRows: rows.length + problems.length }
+  return { rows, problems, duplicates }
 }
 
-export async function parseIngredients(file: File): Promise<ParseResult<IngredientRow>> {
-  const found = locate(await readWorkbook(file), INGREDIENT_COLUMNS)
-  if (!found) {
-    throw new Error(
-      `Could not find the expected column headings. The first row should contain: ${INGREDIENT_COLUMNS.join(', ')}.`,
-    )
-  }
-  const existing = (await db.ingredients.toArray()).filter((row) => row.deletedAt === null)
-  return parseIngredientSheet(found, existing)
-}
-
-export async function applyIngredients(
+async function applyIngredients(
   rows: IngredientRow[],
 ): Promise<{ created: number; updated: number; ids: Map<string, string> }> {
   const writes: PendingWrite[] = []
@@ -779,7 +767,7 @@ function parseRecipeSheet(
   }
 
   problems.sort((a, b) => a.row - b.row)
-  return { result: { rows, problems, duplicates, totalRows: rows.length + problems.length }, drinks: plans }
+  return { result: { rows, problems, duplicates }, drinks: plans }
 }
 
 /**
@@ -855,10 +843,6 @@ export async function parseMenu(file: File): Promise<MenuParse> {
     newCategories,
     sheets: { ingredients: ingredientSheet !== null, recipes: recipeSheet !== null },
   }
-}
-
-export async function parseRecipes(file: File): Promise<ParseResult<RecipeRow>> {
-  return (await parseMenu(file)).recipes
 }
 
 export interface MenuOutcome {

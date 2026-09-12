@@ -13,15 +13,12 @@ import { __setIdentityForTests } from './identity.ts'
 import { commit, created, stamp } from './write.ts'
 import { loadRecipeFor, saveRecipe } from './recipes.ts'
 import {
-  applyIngredients,
   applyMenu,
   DEFAULT_CATEGORY,
   MENU_RECIPE_COLUMNS,
   menuTemplate,
   normaliseUnit,
-  parseIngredients,
   parseMenu,
-  parseRecipes,
   splitDrinkName,
 } from './importing.ts'
 
@@ -106,7 +103,7 @@ describe('importing ingredients', () => {
       ['Nescafe Gold', '100g jar', 294.12, 100, 'grams', ''],
     ])
 
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
 
     expect(result.problems).toEqual([])
     expect(result.rows).toHaveLength(2)
@@ -121,10 +118,9 @@ describe('importing ingredients', () => {
       ['Fresh Milk', '1L', 85, 1000, 'ml', ''],
       ['Pet Cup 16oz', '50 pcs', 150, 50, 'pcs', ''],
     ])
-    const parsed = await parseIngredients(file)
-    const outcome = await applyIngredients(parsed.rows)
+    const outcome = await applyMenu(await parseMenu(file), 'USER-1')
 
-    expect(outcome.created).toBe(2)
+    expect(outcome.ingredients.created).toBe(2)
     const stored = await db.ingredients.toArray()
     expect(stored.find((row) => row.name === 'Pet Cup 16oz')?.stockClass).toBe('PACKAGING')
     expect(stored.find((row) => row.name === 'Fresh Milk')?.stockClass).toBe('INGREDIENT')
@@ -132,13 +128,13 @@ describe('importing ingredients', () => {
 
   test('re-importing updates the cost rather than duplicating the item', async () => {
     const first = await sheetFile('Ingredients', [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']])
-    await applyIngredients((await parseIngredients(first)).rows)
+    await applyMenu(await parseMenu(first), 'USER-1')
 
     const second = await sheetFile('Ingredients', [INGREDIENT_HEADER, ['Fresh Milk', '1L', 95, 1000, 'ml', '']])
-    const outcome = await applyIngredients((await parseIngredients(second)).rows)
+    const outcome = await applyMenu(await parseMenu(second), 'USER-1')
 
-    expect(outcome.created).toBe(0)
-    expect(outcome.updated).toBe(1)
+    expect(outcome.ingredients.created).toBe(0)
+    expect(outcome.ingredients.updated).toBe(1)
     const stored = await db.ingredients.toArray()
     expect(stored).toHaveLength(1)
     expect(stored[0]?.costRate).toBe(costRateFromPurchase(fromDecimal(95), 1000, 'ml'))
@@ -153,7 +149,7 @@ describe('importing ingredients', () => {
       ['Good One', '1L', 85, 1000, 'ml', ''],
     ])
 
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
 
     expect(result.rows).toHaveLength(1)
     expect(result.problems).toHaveLength(3)
@@ -165,7 +161,7 @@ describe('importing ingredients', () => {
 
   test('a file with the wrong headings is refused with an explanation', async () => {
     const file = await sheetFile('Ingredients', [['Thing', 'Whatever'], ['x', 'y']])
-    await expect(parseIngredients(file)).rejects.toThrow(/column headings/i)
+    await expect(parseMenu(file)).rejects.toThrow(/column headings/i)
   })
 
   test('blank spacer rows are skipped rather than flagged', async () => {
@@ -175,7 +171,7 @@ describe('importing ingredients', () => {
       ['', '', '', '', '', ''],
       ['Sugar', '1kg', 60, 1000, 'g', ''],
     ])
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
     expect(result.rows).toHaveLength(2)
     expect(result.problems).toEqual([])
   })
@@ -229,7 +225,7 @@ describe('importing recipes', () => {
       ['Caramel Macchiato', '16oz', 'Nescafe Gold', 3, 'grams'],
     ])
 
-    const result = await parseRecipes(file)
+    const result = (await parseMenu(file)).recipes
     expect(result.problems).toEqual([])
     expect(result.rows).toHaveLength(2)
 
@@ -248,7 +244,7 @@ describe('importing recipes', () => {
       ['Drink Name', 'Ingredient Name', 'Quantity Used', 'Quantity Unit'],
       ['Caramel Macchiato (16oz)', 'Jersey Full Cream Milk 1L', 150, 'ml'],
     ])
-    const result = await parseRecipes(file)
+    const result = (await parseMenu(file)).recipes
     expect(result.problems).toEqual([])
     expect(result.rows[0]?.size).toBe('16oz')
   })
@@ -262,7 +258,7 @@ describe('importing recipes', () => {
       ['Caramel Macchiato', '99oz', 'Jersey Full Cream Milk 1L', 150, 'ml'],
     ])
 
-    const result = await parseRecipes(file)
+    const result = (await parseMenu(file)).recipes
     // Both unknown drinks are new sizes with no price, so they are refused for that reason.
     expect(result.rows).toHaveLength(0)
     expect(result.problems.filter((p) => /needs a Selling Price/i.test(p.message))).toHaveLength(2)
@@ -276,7 +272,7 @@ describe('importing recipes', () => {
       // Milk is a volume; grams is a mass.
       ['Caramel Macchiato', '16oz', 'Jersey Full Cream Milk 1L', 150, 'grams'],
     ])
-    const result = await parseRecipes(file)
+    const result = (await parseMenu(file)).recipes
     expect(result.rows).toHaveLength(0)
     expect(result.problems[0]?.message).toMatch(/cannot be used in/i)
   })
@@ -301,7 +297,7 @@ describe('importing recipes', () => {
       ['COFFEE', '', '', '', ''],
       ['Caramel Macchiato', '16oz', 'Jersey Full Cream Milk 1L', 150, 'ml'],
     ])
-    const result = await parseRecipes(file)
+    const result = (await parseMenu(file)).recipes
     expect(result.rows).toHaveLength(1)
     expect(result.problems).toEqual([])
   })
@@ -316,7 +312,7 @@ describe('reading the workbook', () => {
       [],
       ['Bad Unit', '1 tub', 50, 10, 'scoops', ''],
     ])
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
     expect(result.problems).toEqual([
       { sheet: 'Ingredients', row: 4, message: expect.stringMatching(/not a unit/i) },
     ])
@@ -327,7 +323,7 @@ describe('reading the workbook', () => {
       ['Ingredient Name', 'Purchase Unit', 'Total Cost (₱)', 'Total Quantity Unit', 'Total Quantity', 'Cost per Unit (AUTO)'],
       ['Fresh Milk', '1L', 85, 'ml', 1000, ''],
     ])
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
     expect(result.problems).toEqual([])
     expect(result.rows[0]?.totalQuantity).toBe(1000)
     expect(result.rows[0]?.unit).toBe('ml')
@@ -341,7 +337,7 @@ describe('reading the workbook', () => {
       Recipes: [['Drink Name', 'Ingredient Name', 'Total Quantity', 'Quantity Unit', 'Cost per Unit (AUTO)']],
       Ingredients: [INGREDIENT_HEADER, ['Fresh Milk', '1L', 85, 1000, 'ml', '']],
     })
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
     expect(result.rows).toHaveLength(1)
     expect(result.rows[0]?.name).toBe('Fresh Milk')
   })
@@ -357,7 +353,7 @@ describe('reading the workbook', () => {
     sheet.getCell('F2').value = { formula: 'C2/D2' }
     const file = new File([await book.xlsx.writeBuffer()], 'menu.xlsx', { type: XLSX })
 
-    const result = await parseIngredients(file)
+    const result = (await parseMenu(file)).ingredients
     expect(result.problems).toEqual([])
     expect(result.rows[0]?.name).toBe('Fresh Milk')
   })
