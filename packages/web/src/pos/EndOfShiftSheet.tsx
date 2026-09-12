@@ -1,8 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import { toast } from 'sonner'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { LockKeyhole, Plus, Printer, X } from 'lucide-react'
+import { LockKeyhole, Plus, Printer } from 'lucide-react'
 import { fromDecimal, type ExpenseCategoryEntry, type Shift } from '@pos/shared'
 import { buildEndOfDay, endOfShiftLines } from '../db/endOfDay.ts'
 import { recordExpense } from '../db/expenses.ts'
@@ -11,7 +10,7 @@ import { printerConfig } from '../db/receipts.ts'
 import { printLinesInBrowser } from '../print/printing.ts'
 import { findOpenShift } from './shift.ts'
 import { CloseShiftSheet } from '../screens/reports/ShiftPanel.tsx'
-import { Button, Field, Input } from '../components/ui/primitives.tsx'
+import { Button, Field, Input, Sheet } from '../components/ui/primitives.tsx'
 import { useMoney, useSession, useSettings } from '../app/providers.tsx'
 import { cn } from '../lib/utils.ts'
 
@@ -101,7 +100,7 @@ export function EndOfShiftSheet({ open, onClose }: { open: boolean; onClose: () 
                 ) : null}
               </div>
 
-              <dl className="divide-y divide-line rounded-xl border border-line">
+              <dl className="divide-y divide-line rounded-md border border-line">
                 {summary.expenses.length === 0 ? (
                   <Empty>Nothing recorded yet.</Empty>
                 ) : (
@@ -181,13 +180,13 @@ export function EndOfShiftSheet({ open, onClose }: { open: boolean; onClose: () 
               ) : null}
 
               {shift && !mayClose ? (
-                <p className="rounded-xl bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
+                <p className="rounded-md bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
                   You can see the figures but not close the day. A supervisor takes the Z reading.
                 </p>
               ) : null}
 
               {shift === null ? (
-                <p className="rounded-xl bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
+                <p className="rounded-md bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
                   No shift is open, so there is nothing to close. The figures above still stand.
                 </p>
               ) : null}
@@ -263,7 +262,7 @@ function AddExpense({ userId, onDone }: { userId: string; onDone: () => void }) 
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-xl border border-line p-3">
+    <div className="mt-2 space-y-2 rounded-md border border-line p-3">
       <div className="grid grid-cols-3 gap-1.5">
         {categories.map((entry) => (
           <button
@@ -318,7 +317,7 @@ const countOf = (rows: Array<{ quantity: number }>): number =>
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-line bg-surface-sunken px-3.5 py-3">
+    <div className="rounded-md border border-line bg-surface-sunken px-3.5 py-3">
       <p className="text-[0.8125rem] text-ink-muted">{label}</p>
       <p className="mt-0.5 text-2xl font-semibold tracking-tight text-ink">{value}</p>
     </div>
@@ -329,7 +328,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
       <h3 className="mb-1 text-[0.8125rem] font-medium text-ink-muted">{title}</h3>
-      <dl className="divide-y divide-line rounded-xl border border-line">{children}</dl>
+      <dl className="divide-y divide-line rounded-md border border-line">{children}</dl>
     </section>
   )
 }
@@ -378,37 +377,5 @@ function Line({
         {value}
       </dd>
     </div>
-  )
-}
-
-function Sheet({
-  open,
-  onClose,
-  title,
-  children,
-}: {
-  open: boolean
-  onClose: () => void
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed inset-x-0 bottom-0 z-50 max-h-[94dvh] overflow-y-auto rounded-t-3xl border-t border-line bg-surface px-5 pb-6 pt-5 shadow-overlay animate-slide-up pad-safe-bottom sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:border"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <Dialog.Title className="text-lg font-semibold text-ink">{title}</Dialog.Title>
-            <Dialog.Close className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-sunken" aria-label="Close">
-              <X className="h-4 w-4" aria-hidden="true" />
-            </Dialog.Close>
-          </div>
-          {children}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
   )
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { X } from 'lucide-react'
 import { fromDecimal, newId, type DiscountType } from '@pos/shared'
-import { Button, Field, Input } from '../components/ui/primitives.tsx'
+import { Button, Field, Input, Sheet } from '../components/ui/primitives.tsx'
 import { useSession, useSettings } from '../app/providers.tsx'
 import type { CartDiscount } from './checkout.ts'
 import { cn } from '../lib/utils.ts'
@@ -75,20 +73,17 @@ export function DiscountSheet({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
-        <Dialog.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay animate-slide-up sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:border sm:animate-scale-in">
-          <header className="flex items-center justify-between border-b border-line px-5 py-4">
-            <Dialog.Title className="text-lg font-semibold text-ink">Apply a discount</Dialog.Title>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close">
-                <X className="h-5 w-5" aria-hidden="true" />
-              </Button>
-            </Dialog.Close>
-          </header>
-
-          <div className="scroll-pane flex-1 space-y-5 px-5 py-5">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Apply a discount"
+      footer={
+        <Button size="lg" full onClick={apply} disabled={!valid || !allowed}>
+          Apply discount
+        </Button>
+      }
+    >
+      <div className="space-y-5">
             <div className="grid grid-cols-2 gap-2">
               {OPTIONS.map((option) => (
                 <button
@@ -96,7 +91,7 @@ export function DiscountSheet({
                   type="button"
                   onClick={() => setType(option.type)}
                   className={cn(
-                    'rounded-xl border p-3 text-left transition-colors press',
+                    'rounded-md border p-3 text-left transition-colors press',
                     type === option.type ? 'border-brand bg-brand-soft' : 'border-line hover:border-line-strong',
                   )}
                 >
@@ -108,7 +103,7 @@ export function DiscountSheet({
 
             {statutory ? (
               <div className="space-y-4">
-                <div className="rounded-xl bg-surface-sunken px-3.5 py-3 text-[0.8125rem] text-ink-muted">
+                <div className="rounded-md bg-surface-sunken px-3.5 py-3 text-[0.8125rem] text-ink-muted">
                   VAT is removed from the sale first, then {statutoryRate}% is taken off the VAT-exempt amount.
                   Both figures are printed separately on the receipt.
                 </div>
@@ -154,19 +149,12 @@ export function DiscountSheet({
             )}
 
             {!allowed ? (
-              <p className="rounded-xl bg-warning/10 px-3.5 py-3 text-[0.8125rem] text-warning">
+              <p className="rounded-md border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
                 Your role cannot apply this kind of discount. A supervisor or manager needs to sign in.
               </p>
             ) : null}
           </div>
 
-          <footer className="border-t border-line px-5 py-4 pad-safe-bottom">
-            <Button size="lg" full onClick={apply} disabled={!valid || !allowed}>
-              Apply discount
-            </Button>
-          </footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </Sheet>
   )
 }

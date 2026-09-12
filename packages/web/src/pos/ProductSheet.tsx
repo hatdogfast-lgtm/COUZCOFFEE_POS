@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { Minus, Plus, TriangleAlert, X } from 'lucide-react'
+import { Minus, Plus, TriangleAlert } from 'lucide-react'
 import type { ModifierOption, Product, SaleItemModifier } from '@pos/shared'
 import { availabilityOf, type MenuData, type StockMap } from '../db/repo.ts'
 import { currentUnitCost, type CartLine } from './checkout.ts'
-import { Button } from '../components/ui/primitives.tsx'
+import { Button, Sheet } from '../components/ui/primitives.tsx'
 import { useMoney, useSession, useSettings } from '../app/providers.tsx'
 import { servingUnitOf } from '../db/till.ts'
 import { cn } from '../lib/utils.ts'
@@ -147,33 +146,57 @@ export function ProductSheet({
   if (!product) return null
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
-        <Dialog.Content
-          className={cn(
-            'fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay',
-            'sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-[26rem] sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0',
-            'animate-slide-up sm:animate-slide-in-right',
-          )}
-        >
-          <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4 pad-safe-top">
-            <div className="min-w-0">
-              <Dialog.Title className="truncate text-lg font-semibold text-ink">{product.name}</Dialog.Title>
-              {product.description ? (
-                <Dialog.Description className="mt-0.5 line-clamp-2 text-sm text-ink-muted">
-                  {product.description}
-                </Dialog.Description>
-              ) : null}
-            </div>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close">
-                <X className="h-5 w-5" aria-hidden="true" />
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={product.name}
+      description={product.description || undefined}
+      placement="side"
+      footer={
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1 rounded-md border border-line-strong p-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setQuantity((value) => Math.max(1, value - 1))}
+                disabled={quantity <= 1}
+                aria-label="Fewer"
+              >
+                <Minus className="h-4 w-4" aria-hidden="true" />
               </Button>
-            </Dialog.Close>
-          </header>
+              <span className="tabular w-10 text-center text-lg font-semibold text-ink">{quantity}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setQuantity((value) => value + 1)}
+                aria-label="More"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+            <div className="text-right">
+              <p className="text-[0.8125rem] text-ink-muted">Line total</p>
+              <p className="tabular text-xl font-semibold text-ink">{money(lineTotal)}</p>
+            </div>
+          </div>
 
-          <div className="scroll-pane flex-1 space-y-6 px-5 py-5">
+          <Button size="lg" full onClick={handleAdd} disabled={!variant || blocked}>
+            {blocked
+              ? availability?.outOfStock
+                ? 'Out of stock'
+                : 'Not enough stock'
+              : `Add to order`}
+          </Button>
+          {blocked && !canOverride ? (
+            <p className="text-center text-xs text-ink-subtle">
+              A supervisor can override this from their own sign-in.
+            </p>
+          ) : null}
+        </div>
+      }
+    >
+      <div className="space-y-6">
             {variants.length > 1 ? (
               <section className="space-y-2.5">
                 <h3 className="text-[0.8125rem] font-medium text-ink-muted">Size</h3>
@@ -187,7 +210,7 @@ export function ProductSheet({
                         type="button"
                         onClick={() => setVariantId(entry.id)}
                         className={cn(
-                          'rounded-xl border px-3 py-3 text-center transition-colors press',
+                          'rounded-md border px-3 py-3 text-center transition-colors press',
                           entry.id === variantId
                             ? 'border-brand bg-brand-soft'
                             : 'border-line bg-surface hover:border-line-strong',
@@ -229,7 +252,7 @@ export function ProductSheet({
                           type="button"
                           onClick={() => toggleOption(groupId, option)}
                           className={cn(
-                            'flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors press',
+                            'flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left transition-colors press',
                             active ? 'border-brand bg-brand-soft' : 'border-line bg-surface hover:border-line-strong',
                           )}
                         >
@@ -254,15 +277,15 @@ export function ProductSheet({
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="e.g. extra hot, no foam"
                 maxLength={120}
-                className="h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                className="h-11 w-full rounded-md border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
               />
             </section>
 
             {availability && availability.makeable !== Infinity && availability.makeable < 6 ? (
               <div
                 className={cn(
-                  'flex items-start gap-2.5 rounded-xl px-3.5 py-3 text-[0.8125rem]',
-                  availability.outOfStock ? 'bg-danger/10 text-danger' : 'bg-warning/10 text-warning',
+                  'flex items-start gap-2.5 rounded-md border-l-2 px-3.5 py-3 text-[0.8125rem] text-ink',
+                  availability.outOfStock ? 'border-danger bg-danger/10' : 'border-honey bg-honey/15',
                 )}
               >
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
@@ -278,56 +301,13 @@ export function ProductSheet({
               <button
                 type="button"
                 onClick={() => setOverride(true)}
-                className="w-full rounded-xl border border-dashed border-line-strong px-3.5 py-3 text-[0.8125rem] text-ink-muted hover:bg-surface-sunken"
+                className="w-full rounded-md border border-dashed border-line-strong px-3.5 py-3 text-[0.8125rem] text-ink-muted hover:bg-surface-sunken"
               >
                 Sell anyway and let stock go negative
               </button>
             ) : null}
           </div>
 
-          <footer className="space-y-3 border-t border-line bg-surface px-5 py-4 pad-safe-bottom">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1 rounded-xl border border-line p-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setQuantity((value) => Math.max(1, value - 1))}
-                  disabled={quantity <= 1}
-                  aria-label="Fewer"
-                >
-                  <Minus className="h-4 w-4" aria-hidden="true" />
-                </Button>
-                <span className="tabular w-10 text-center text-lg font-semibold text-ink">{quantity}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setQuantity((value) => value + 1)}
-                  aria-label="More"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                </Button>
-              </div>
-              <div className="text-right">
-                <p className="text-[0.8125rem] text-ink-muted">Line total</p>
-                <p className="tabular text-xl font-semibold text-ink">{money(lineTotal)}</p>
-              </div>
-            </div>
-
-            <Button size="lg" full onClick={handleAdd} disabled={!variant || blocked}>
-              {blocked
-                ? availability?.outOfStock
-                  ? 'Out of stock'
-                  : 'Not enough stock'
-                : `Add to order`}
-            </Button>
-            {blocked && !canOverride ? (
-              <p className="text-center text-xs text-ink-subtle">
-                A supervisor can override this from their own sign-in.
-              </p>
-            ) : null}
-          </footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </Sheet>
   )
 }

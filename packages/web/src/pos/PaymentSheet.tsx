@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import * as Dialog from '@radix-ui/react-dialog'
-import { Banknote, CreditCard, Gift, Loader2, Smartphone, TriangleAlert, X } from 'lucide-react'
+import { Banknote, CreditCard, Gift, Loader2, Smartphone, TriangleAlert } from 'lucide-react'
 import {
   changeDue,
   fromDecimal,
@@ -12,7 +11,7 @@ import {
   type PaymentMethod,
   type PaymentMethodEntry,
 } from '@pos/shared'
-import { Button } from '../components/ui/primitives.tsx'
+import { Button, Sheet } from '../components/ui/primitives.tsx'
 import { useMoney, useSettings, useSyncStatus } from '../app/providers.tsx'
 import type { TenderInput } from './checkout.ts'
 import { listPaymentMethods } from '../db/shopLists.ts'
@@ -113,27 +112,25 @@ export function PaymentSheet({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={(next) => !next && !busy && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
-        <Dialog.Content
-          className={cn(
-            'fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay',
-            'sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:border',
-            'animate-slide-up sm:animate-scale-in',
-          )}
-        >
-          <header className="flex items-center justify-between border-b border-line px-5 py-4">
-            <Dialog.Title className="text-lg font-semibold text-ink">Payment</Dialog.Title>
-            <Dialog.Close asChild>
-              <Button variant="ghost" size="icon" aria-label="Close" disabled={busy}>
-                <X className="h-5 w-5" aria-hidden="true" />
-              </Button>
-            </Dialog.Close>
-          </header>
-
-          <div className="scroll-pane flex-1 space-y-5 px-5 py-5">
-            <div className="rounded-2xl bg-surface-sunken px-4 py-4 text-center">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title="Payment"
+      dismissible={!busy}
+      closeDisabled={busy}
+      footer={
+        <Button size="xl" full onClick={confirm} disabled={busy || short || missingReference}>
+          {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : null}
+          {busy
+            ? 'Completing…'
+            : claiming
+              ? 'Complete as loyalty claim'
+              : `Complete sale · ${money(totals.total)}`}
+        </Button>
+      }
+    >
+      <div className="space-y-5">
+            <div className="rounded-md bg-surface-sunken px-4 py-4 text-center">
               <p className="text-[0.8125rem] text-ink-muted">{claiming ? 'Loyalty claim' : 'Amount due'}</p>
               <p className="tabular text-4xl font-semibold tracking-tight text-ink">
                 {claiming ? money(0) : money(totals.total)}
@@ -161,7 +158,7 @@ export function PaymentSheet({
                     type="button"
                     onClick={() => setMethod(entry.code as PaymentMethod)}
                     className={cn(
-                      'flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 transition-colors press',
+                      'flex flex-col items-center gap-1.5 rounded-md border px-2 py-3 transition-colors press',
                       method === entry.code ? 'border-brand bg-brand-soft' : 'border-line hover:border-line-strong',
                     )}
                   >
@@ -194,10 +191,10 @@ export function PaymentSheet({
                     inputMode="decimal"
                     placeholder="0.00"
                     autoFocus
-                    className="tabular h-14 w-full rounded-xl border border-line bg-surface px-4 text-right text-2xl font-semibold text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                    className="figure h-14 w-full rounded-md border border-line-strong bg-surface px-4 text-right text-2xl font-semibold text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
                   />
                 </label>
-                <div className="flex items-center justify-between rounded-xl bg-surface-sunken px-4 py-3">
+                <div className="flex items-center justify-between rounded-md bg-surface-sunken px-4 py-3">
                   <span className="text-sm text-ink-muted">Change</span>
                   <span
                     className={cn(
@@ -235,13 +232,13 @@ export function PaymentSheet({
                         : 'e.g. last 4 digits, or approval code'
                   }
                   maxLength={40}
-                  className="h-11 w-full rounded-xl border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                  className="h-11 w-full rounded-md border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
                 />
               </label>
             )}
 
             {unverified ? (
-              <div className="flex items-start gap-2.5 rounded-xl bg-warning/10 px-3.5 py-3 text-[0.8125rem] text-warning">
+              <div className="flex items-start gap-2.5 rounded-md border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <p>
                   This device is offline, so the payment cannot be confirmed with the provider. It will be recorded
@@ -252,18 +249,6 @@ export function PaymentSheet({
             ) : null}
           </div>
 
-          <footer className="border-t border-line px-5 py-4 pad-safe-bottom">
-            <Button size="xl" full onClick={confirm} disabled={busy || short || missingReference}>
-              {busy ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" /> : null}
-              {busy
-                ? 'Completing…'
-                : claiming
-                  ? 'Complete as loyalty claim'
-                  : `Complete sale · ${money(totals.total)}`}
-            </Button>
-          </footer>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    </Sheet>
   )
 }

@@ -71,7 +71,7 @@ export function OrderTiming({
             type="button"
             onClick={() => onChoice(option.value)}
             className={cn(
-              'rounded-lg border px-2 py-2 text-xs font-medium transition-colors press no-select',
+              'rounded-md border px-2 py-2 text-xs font-medium transition-colors press no-select',
               choice === option.value
                 ? 'border-brand bg-brand text-brand-ink'
                 : 'border-line bg-surface text-ink-muted hover:text-ink',
@@ -91,7 +91,7 @@ export function OrderTiming({
             const parsed = new Date(event.target.value).getTime()
             if (Number.isFinite(parsed)) onCustomAt(parsed)
           }}
-          className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+          className="h-10 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
         />
       ) : null}
 
@@ -215,7 +215,7 @@ export function LumpSumEntry({ defaultAt }: { defaultAt: number }) {
             type="button"
             onClick={() => setMethod(entry.value)}
             className={cn(
-              'rounded-lg border px-1 py-2 text-xs font-medium transition-colors press no-select',
+              'rounded-md border px-1 py-2 text-xs font-medium transition-colors press no-select',
               method === entry.value
                 ? 'border-brand bg-brand text-brand-ink'
                 : 'border-line bg-surface text-ink-muted hover:text-ink',
@@ -277,14 +277,14 @@ function Counter({
   unit: string
 }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-line bg-surface px-2 py-1.5">
+    <div className="flex items-center justify-between rounded-md border border-line bg-surface px-2 py-1.5">
       <span className="pl-1.5 text-[0.8125rem] text-ink-muted">{label}</span>
       <span className="flex items-center gap-1">
         <button
           type="button"
           onClick={() => onStep(-1)}
           disabled={!canDecrease}
-          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-40"
+          className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken disabled:opacity-40"
           aria-label={`One fewer ${unit}`}
         >
           <Minus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -294,13 +294,13 @@ function Counter({
           onChange={(event) => onValue(event.target.value.replace(/[^\d]/g, ''))}
           inputMode="numeric"
           placeholder="0"
-          className="tabular h-8 w-14 rounded-lg border border-line bg-canvas px-1 text-center text-sm text-ink focus:border-brand focus:outline-none"
+          className="tabular h-8 w-14 rounded-md border border-line-strong bg-canvas px-1 text-center text-sm text-ink focus:border-brand focus:outline-none"
           aria-label={label}
         />
         <button
           type="button"
           onClick={() => onStep(1)}
-          className="rounded-lg p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken"
+          className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-surface-sunken"
           aria-label={`One more ${unit}`}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden="true" />
