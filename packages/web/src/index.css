@@ -11,36 +11,52 @@
  * defaults only - Settings overwrites them on the root element at startup.
  */
 @layer base {
+  /*
+   * Couz Coffee palette, light.
+   *
+   * Two of the ten supplied colours cannot hold text on cream - Caramel
+   * (2.64:1) and Honey (2.24:1) - so each is a fill with its own ink token,
+   * and `warning` is a darker honey that reads as text. Latte Gray is 0.01
+   * short of AA at body size; `ink-subtle` is the darkened one that passes.
+   * Cream on milk is 1.09:1, so a card is told from the page by `line`, not
+   * by fill. `scripts/contrast.mjs` checks every pair below.
+   */
   :root {
-    --canvas: 247 247 245;
-    --surface: 255 255 255;
-    --surface-raised: 255 255 255;
-    --surface-sunken: 241 241 238;
+    --canvas: 248 243 234; /* Warm Cream   #F8F3EA */
+    --surface: 255 253 248; /* Milk White   #FFFDF8 */
+    --surface-raised: 255 253 248;
+    --surface-sunken: 241 233 220; /* a well in the cream */
 
-    --line: 227 227 222;
-    --line-strong: 208 208 201;
+    --line: 232 223 208; /* hairline     #E8DFD0 */
+    --line-strong: 216 204 184; /* inputs, chips #D8CCB8 */
 
-    --ink: 24 24 27;
-    --ink-muted: 92 92 99;
-    --ink-subtle: 138 138 146;
+    --ink: 36 24 18; /* Dark Roast   #241812 */
+    --ink-muted: 92 81 72; /* 6.97:1 */
+    --ink-subtle: 106 95 85; /* Latte Gray, AA  #6A5F55 */
 
-    --brand: 122 74 44;
-    --brand-ink: 255 255 255;
-    --brand-soft: 243 234 226;
+    --brand: 59 36 22; /* Deep Espresso #3B2416 */
+    --brand-ink: 248 243 234;
+    --brand-soft: 239 227 211; /* active tint */
+    --brand-light: 111 78 55; /* Coffee Brown #6F4E37 */
 
-    --accent: 193 138 74;
-    --accent-ink: 32 22 12;
+    --accent: 200 138 74; /* Caramel - fill only #C88A4A */
+    --accent-ink: 36 24 18; /* 5.92:1 on Caramel */
 
-    /* Chart hue. Fixed rather than following the configurable brand colour,
-     * so a pale brand choice can never make a chart unreadable. Validated
-     * against this surface: lightness band, chroma floor, and 3:1 contrast. */
-    --chart: 169 98 47;
-    --chart-track: 232 232 227;
+    /* The chrome - header, order bar - is espresso in both themes. */
+    --chrome: 59 36 22;
+    --chrome-ink: 248 243 234;
+    --chrome-muted: 201 185 166; /* 7.57:1 on espresso */
 
-    --positive: 22 128 84;
-    --warning: 191 122 16;
-    --danger: 190 48 48;
-    --danger-ink: 255 255 255;
+    --chart: 111 78 55; /* Coffee Brown, 6.74:1 */
+    --chart-track: 232 223 208;
+
+    --positive: 88 115 76; /* Matcha       #58734C 4.78:1 */
+    --positive-ink: 255 255 255; /* 5.20:1 on Matcha */
+    --warning: 138 99 20; /* honey, dark enough to read  4.90:1 */
+    --honey: 212 154 58; /* Honey - fill only #D49A3A */
+    --honey-ink: 36 24 18; /* 6.99:1 on Honey */
+    --danger: 184 76 69; /* Berry Red    #B84C45 4.57:1 */
+    --danger-ink: 255 246 244;
 
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -48,33 +64,49 @@
     --safe-right: env(safe-area-inset-right, 0px);
   }
 
+  /*
+   * Dark. Deep Espresso becomes the ground rather than the ink: it is the
+   * chrome, on a ground a shade deeper so the chrome still reads as a bar.
+   * The surfaces are Dark Roast; Caramel loses saturation so it does not
+   * glare, and takes the `brand` role because espresso on espresso is
+   * invisible. Every ratio re-measured against the new ground - see
+   * scripts/contrast.mjs.
+   */
   [data-theme='dark'] {
-    --canvas: 15 17 21;
-    --surface: 22 25 31;
-    --surface-raised: 30 34 41;
-    --surface-sunken: 12 14 18;
+    --canvas: 28 18 12; /* #1C120C, a shade under espresso */
+    --surface: 36 24 18; /* Dark Roast as surface */
+    --surface-raised: 46 32 24;
+    --surface-sunken: 21 13 8;
 
-    --line: 42 47 56;
-    --line-strong: 60 67 78;
+    --line: 62 46 36;
+    --line-strong: 84 64 50;
 
-    --ink: 237 238 240;
-    --ink-muted: 158 163 173;
-    --ink-subtle: 111 117 128;
+    --ink: 248 243 234;
+    --ink-muted: 205 191 175;
+    --ink-subtle: 176 160 143;
 
-    --brand: 197 141 92;
-    --brand-ink: 24 16 9;
-    --brand-soft: 46 37 29;
+    --brand: 214 168 110; /* Caramel, desaturated  #D6A86E */
+    --brand-ink: 36 24 18;
+    --brand-soft: 58 42 30;
+    --brand-light: 201 151 106;
 
-    --accent: 214 165 106;
-    --accent-ink: 26 18 8;
+    --accent: 227 190 142; /* #E3BE8E */
+    --accent-ink: 36 24 18;
 
-    --chart: 190 127 62;
-    --chart-track: 38 43 52;
+    --chrome: 59 36 22; /* Deep Espresso, the same bar in both themes */
+    --chrome-ink: 248 243 234;
+    --chrome-muted: 201 185 166;
 
-    --positive: 61 178 122;
-    --warning: 226 160 56;
-    --danger: 232 96 96;
-    --danger-ink: 26 10 10;
+    --chart: 214 168 110;
+    --chart-track: 62 46 36;
+
+    --positive: 157 190 144;
+    --positive-ink: 36 24 18; /* light Matcha carries dark ink */
+    --warning: 221 170 72;
+    --honey: 221 170 72;
+    --honey-ink: 36 24 18;
+    --danger: 232 150 142;
+    --danger-ink: 42 14 12;
   }
 
   * {
@@ -88,7 +120,7 @@
   }
 
   body {
-    @apply bg-canvas text-ink antialiased;
+    @apply bg-canvas font-sans text-ink antialiased;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
     text-rendering: optimizeLegibility;
     /* A till is a touch surface: never let a stray drag bounce the page. */
@@ -128,12 +160,13 @@
 }
 
 @layer components {
+  /* A card is told from the page by its edge, not its fill or a shadow. */
   .card {
-    @apply rounded-2xl border border-line bg-surface shadow-card;
+    @apply rounded-lg border border-line bg-surface;
   }
 
   .panel {
-    @apply rounded-2xl border border-line bg-surface;
+    @apply rounded-lg border border-line bg-surface;
   }
 
   /* Touch targets: 44px is the floor on a tablet a barista uses one-handed. */
@@ -143,6 +176,17 @@
 
   .press {
     @apply transition-transform duration-100 ease-swift active:scale-[0.97];
+  }
+
+  /* The letterspaced micro-label: section headings, chips, the odd caption. */
+  .micro {
+    @apply text-[0.6875rem] font-semibold uppercase tracking-[0.12em];
+  }
+
+  /* Money and counts: monospaced and tabular, so a column never re-flows. */
+  .figure {
+    @apply font-mono tabular-nums tracking-tight;
+    font-feature-settings: 'tnum';
   }
 
   .skeleton {

@@ -90,7 +90,7 @@ function useBranding(settings: BusinessSettings | null): void {
         (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
       root.setAttribute('data-theme', dark ? 'dark' : 'light')
       const meta = document.querySelector('meta[name="theme-color"]')
-      meta?.setAttribute('content', dark ? '#0f1115' : '#f7f7f5')
+      meta?.setAttribute('content', dark ? '#150D08' : '#3B2416')
     }
 
     apply()
