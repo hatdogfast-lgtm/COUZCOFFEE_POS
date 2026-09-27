@@ -1,10 +1,8 @@
-import { useState, type ComponentType } from 'react'
+import type { ComponentType } from 'react'
 import { HashRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ChartLine, LogOut, Receipt, Settings, ShoppingCart, UtensilsCrossed, Users } from 'lucide-react'
 import type { Permission } from '@pos/shared'
 import { roleLabel } from '@pos/shared'
-import { ConnectionBadge, ConnectionBanner } from '../components/ConnectionBadge.tsx'
-import { SyncSheet } from '../screens/SyncSheet.tsx'
 import { PosScreen } from '../pos/PosScreen.tsx'
 import { MenuScreen } from '../screens/MenuScreen.tsx'
 import { ReportsScreen } from '../screens/ReportsScreen.tsx'
@@ -47,7 +45,6 @@ const NAV: NavItem[] = [
 export function AppShell() {
   const { settings } = useSettings()
   const { user, signOut, can } = useSession()
-  const [showSync, setShowSync] = useState(false)
 
   const items = NAV.filter((item) => item.permissions.some(can))
   const businessName = settings?.branding.businessName ?? 'Point of Sale'
@@ -58,9 +55,9 @@ export function AppShell() {
         <header className="flex shrink-0 items-center gap-3 bg-chrome px-3 pb-2.5 pt-2 text-chrome-ink pad-safe-top">
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             {settings?.branding.logoDataUrl ? (
-              <img src={settings.branding.logoDataUrl} alt="" className="h-8 w-8 rounded-md object-cover" />
+              <img src={settings.branding.logoDataUrl} alt="" className="h-8 w-8 rounded-full object-cover" />
             ) : (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-accent text-sm font-bold text-accent-ink">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-accent-ink">
                 {businessName.slice(0, 1).toUpperCase()}
               </div>
             )}
@@ -73,19 +70,15 @@ export function AppShell() {
             </div>
           </div>
 
-          {/* Anyone may see the status; only some roles may open what is behind it. */}
-          <ConnectionBadge compact onChrome onClick={can('sync.view') ? () => setShowSync(true) : undefined} />
           <button
             type="button"
             onClick={signOut}
             aria-label="Sign out"
-            className="flex h-9 w-9 items-center justify-center rounded-md text-chrome-muted transition-colors hover:bg-chrome-ink/10 hover:text-chrome-ink"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-chrome-muted transition-colors hover:bg-chrome-ink/10 hover:text-chrome-ink"
           >
             <LogOut className="h-[1.125rem] w-[1.125rem]" aria-hidden="true" />
           </button>
         </header>
-
-        <ConnectionBanner />
 
         <div className="flex min-h-0 flex-1">
           {/* A rail on a laptop; the bottom bar takes over below 1024px. */}
@@ -144,8 +137,6 @@ export function AppShell() {
             ))}
           </nav>
         ) : null}
-
-        <SyncSheet open={showSync} onClose={() => setShowSync(false)} />
       </div>
     </HashRouter>
   )
@@ -159,7 +150,7 @@ function RailLink({ item }: { item: NavItem }) {
       end={item.to === '/'}
       className={({ isActive }) =>
         cn(
-          'flex flex-col items-center gap-1 rounded-md px-1 py-2.5 text-center transition-colors no-select press',
+          'flex flex-col items-center gap-1 rounded-xl px-1 py-2.5 text-center transition-colors no-select press',
           isActive ? 'bg-brand-soft text-brand' : 'text-ink-muted hover:bg-surface-sunken hover:text-ink',
         )
       }

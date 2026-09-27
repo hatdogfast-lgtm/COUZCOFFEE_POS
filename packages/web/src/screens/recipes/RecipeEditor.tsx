@@ -222,7 +222,7 @@ export function RecipeEditor({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay animate-slide-up sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-[32rem] sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 sm:animate-slide-in-right">
           <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4 pad-safe-top">
             <div className="min-w-0">
@@ -296,7 +296,7 @@ export function RecipeEditor({
                         key={target}
                         type="button"
                         onClick={() => setPrice((suggestion / 100).toFixed(2))}
-                        className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-muted transition-colors hover:border-brand hover:text-ink"
+                        className="rounded-full border border-line bg-surface px-2.5 py-1.5 text-xs text-ink-muted transition-colors hover:border-brand hover:text-ink"
                       >
                         {target}% margin → <span className="tabular font-medium">{money(suggestion)}</span>
                       </button>
@@ -360,14 +360,14 @@ export function RecipeEditor({
                           inputMode="decimal"
                           placeholder="0"
                           disabled={!canEdit}
-                          className="tabular h-10 w-20 rounded-lg border border-line bg-surface px-2 text-right text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
+                          className="tabular h-10 w-20 rounded-xl border border-line bg-surface px-2 text-right text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
                         />
 
                         <select
                           value={component.unit}
                           onChange={(event) => setUnit(component.ingredientId, event.target.value as Unit)}
                           disabled={!canEdit}
-                          className="h-10 w-16 rounded-lg border border-line bg-surface px-1.5 text-sm text-ink focus:border-brand focus:outline-none disabled:opacity-60"
+                          className="h-10 w-16 rounded-xl border border-line bg-surface px-1.5 text-sm text-ink focus:border-brand focus:outline-none disabled:opacity-60"
                         >
                           {units.map((entry) => (
                             <option key={entry} value={entry}>
@@ -380,7 +380,7 @@ export function RecipeEditor({
                           <button
                             type="button"
                             onClick={() => remove(component.ingredientId)}
-                            className="shrink-0 rounded-lg p-2 text-ink-subtle transition-colors hover:bg-danger/10 hover:text-danger"
+                            className="shrink-0 rounded-full p-2 text-ink-subtle transition-colors hover:bg-danger/10 hover:text-danger"
                             aria-label={`Remove ${ingredient?.name ?? 'ingredient'}`}
                           >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />

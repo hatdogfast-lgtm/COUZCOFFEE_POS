@@ -12,7 +12,7 @@ import {
   type PaymentMethodEntry,
 } from '@pos/shared'
 import { Button, Sheet } from '../components/ui/primitives.tsx'
-import { useMoney, useSettings, useSyncStatus } from '../app/providers.tsx'
+import { useMoney, useOnlineStatus, useSettings } from '../app/providers.tsx'
 import type { TenderInput } from './checkout.ts'
 import { listPaymentMethods } from '../db/shopLists.ts'
 import { referenceRequired } from '../db/till.ts'
@@ -53,7 +53,7 @@ export function PaymentSheet({
 }) {
   const money = useMoney()
   const { settings } = useSettings()
-  const status = useSyncStatus()
+  const online = useOnlineStatus()
   const [method, setMethod] = useState<PaymentMethod>('CASH')
   const [tenderText, setTenderText] = useState('')
   const [reference, setReference] = useState('')
@@ -87,7 +87,7 @@ export function PaymentSheet({
   const quick = useMemo(() => quickTenderOptions(totals.total), [totals.total])
 
   // A wallet payment taken with no connection is recorded, not verified.
-  const unverified = !takesCash && !claiming && !status.online
+  const unverified = !takesCash && !claiming && !online
 
   // A method the shop has marked as needing a reference cannot be settled
   // without one. Checkout refuses it too; this just stops the operator getting
@@ -130,7 +130,7 @@ export function PaymentSheet({
       }
     >
       <div className="space-y-5">
-            <div className="rounded-md bg-surface-sunken px-4 py-4 text-center">
+            <div className="rounded-xl bg-surface-sunken px-4 py-4 text-center">
               <p className="text-[0.8125rem] text-ink-muted">{claiming ? 'Loyalty claim' : 'Amount due'}</p>
               <p className="tabular text-4xl font-semibold tracking-tight text-ink">
                 {claiming ? money(0) : money(totals.total)}
@@ -158,7 +158,7 @@ export function PaymentSheet({
                     type="button"
                     onClick={() => setMethod(entry.code as PaymentMethod)}
                     className={cn(
-                      'flex flex-col items-center gap-1.5 rounded-md border px-2 py-3 transition-colors press',
+                      'flex flex-col items-center gap-1.5 rounded-full border px-2 py-3 transition-colors press',
                       method === entry.code ? 'border-brand bg-brand-soft' : 'border-line hover:border-line-strong',
                     )}
                   >
@@ -191,10 +191,10 @@ export function PaymentSheet({
                     inputMode="decimal"
                     placeholder="0.00"
                     autoFocus
-                    className="figure h-14 w-full rounded-md border border-line-strong bg-surface px-4 text-right text-2xl font-semibold text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                    className="figure h-14 w-full rounded-xl border border-line-strong bg-surface px-4 text-right text-2xl font-semibold text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
                   />
                 </label>
-                <div className="flex items-center justify-between rounded-md bg-surface-sunken px-4 py-3">
+                <div className="flex items-center justify-between rounded-xl bg-surface-sunken px-4 py-3">
                   <span className="text-sm text-ink-muted">Change</span>
                   <span
                     className={cn(
@@ -232,13 +232,13 @@ export function PaymentSheet({
                         : 'e.g. last 4 digits, or approval code'
                   }
                   maxLength={40}
-                  className="h-11 w-full rounded-md border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                  className="h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
                 />
               </label>
             )}
 
             {unverified ? (
-              <div className="flex items-start gap-2.5 rounded-md border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
+              <div className="flex items-start gap-2.5 rounded-xl border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
                 <p>
                   This device is offline, so the payment cannot be confirmed with the provider. It will be recorded

@@ -8,16 +8,14 @@ import {
 } from '@pos/shared'
 import { db, tableFor } from './database.ts'
 import { deviceId } from './identity.ts'
-import { notifyOutboxChanged } from '../sync/pending.ts'
 
 /**
  * The only sanctioned way to change local data.
  *
  * Each write puts the record and its outbox entry inside a single IndexedDB
- * transaction. That is what makes the guarantee in the brief real: a sale is
- * either fully recorded *and* queued for the server, or neither happened.
- * There is no window in which a completed sale exists locally but will never
- * be sent, and none in which it is queued but not stored.
+ * transaction, so a sale is either fully recorded *and* logged, or neither
+ * happened. There is no window in which a completed sale exists locally but
+ * was never logged, and none in which it is logged but not stored.
  */
 
 export type NewRecord<T extends SyncMeta> = Omit<T, keyof SyncMeta> & Partial<Pick<SyncMeta, 'id' | 'createdAt'>>
@@ -112,11 +110,6 @@ export async function commit(writes: PendingWrite[], now = Date.now()): Promise<
       await db.outbox.put(outboxEntry(write.entity, write.record, write.op, now))
     }
   })
-
-  // The transaction has committed, so the work is safe whatever happens next.
-  // Only now do we nudge the sync engine, and only as a hint - it is free to
-  // ignore it, and the sale is complete either way.
-  notifyOutboxChanged()
 }
 
 /** Create one record and queue it. */
@@ -140,8 +133,8 @@ export async function update<T extends SyncMeta>(
 }
 
 /**
- * Soft-delete. A tombstone can travel to other devices; a hard delete cannot,
- * and would silently reappear on the next pull from a device that still had it.
+ * Soft-delete. A tombstone marks a record as gone without erasing it, so a
+ * restore or an import never has to guess whether an absence was deliberate.
  */
 export async function remove<T extends SyncMeta>(entity: SyncEntity, id: string): Promise<void> {
   const existing = (await tableFor(entity).get(id)) as T | undefined
@@ -149,14 +142,4 @@ export async function remove<T extends SyncMeta>(entity: SyncEntity, id: string)
   const now = Date.now()
   const record = revise(existing, { deletedAt: now } as Partial<T>, now)
   await commit([{ entity, record, op: 'DELETE' }], now)
-}
-
-/**
- * Write a record that arrived from the server.
- *
- * Deliberately does not touch the outbox: echoing a server change back to the
- * server would loop forever.
- */
-export async function applyFromServer(entity: SyncEntity, record: SyncMeta): Promise<void> {
-  await tableFor(entity).put(record as { id: string })
 }

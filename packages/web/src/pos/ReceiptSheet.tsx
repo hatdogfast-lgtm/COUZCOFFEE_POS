@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Check, CloudOff, Printer } from 'lucide-react'
 import type { OrderTotals, Sale } from '@pos/shared'
-import { Button, Micro, Money, Sheet } from '../components/ui/primitives.tsx'
-import { useMoney, useSession, useSettings, useSyncStatus } from '../app/providers.tsx'
+import { Button, Glow, Micro, Money, Sheet } from '../components/ui/primitives.tsx'
+import { useMoney, useOnlineStatus, useSession, useSettings } from '../app/providers.tsx'
 import { printerConfig, receiptForFreshSale } from '../db/receipts.ts'
 import { printReceipt } from '../print/printing.ts'
 import { toast } from 'sonner'
@@ -35,7 +35,7 @@ export function ReceiptSheet({
   const money = useMoney()
   const { settings } = useSettings()
   const { user } = useSession()
-  const status = useSyncStatus()
+  const online = useOnlineStatus()
 
   /**
    * Print what was just sold.
@@ -102,7 +102,7 @@ export function ReceiptSheet({
   if (!sale || !totals) return null
 
   const branding = settings?.branding
-  const unverified = payments.some((payment) => payment.method !== 'CASH') && !status.online
+  const unverified = payments.some((payment) => payment.method !== 'CASH') && !online
 
   return (
     <Sheet
@@ -131,13 +131,14 @@ export function ReceiptSheet({
     >
       {/* The queue number is the largest thing on screen because it is the
           one piece of information the next person in the queue needs. */}
-      <div className="text-center">
+      <div className="relative overflow-hidden text-center">
+        <Glow className="left-1/2 top-1/2 -z-10 -translate-x-1/2 -translate-y-1/2" />
         <Micro>Queue number</Micro>
         <p className="font-display text-7xl font-medium leading-none tracking-tight text-brand">{sale.queueNo}</p>
       </div>
 
       {change > 0 ? (
-        <div className="mt-5 rounded-md border border-positive/40 bg-positive/10 px-4 py-3 text-center">
+        <div className="mt-5 rounded-2xl border border-positive/40 bg-positive/10 px-4 py-3 text-center">
           <Micro className="text-positive">Change due</Micro>
           <Money className="block text-3xl font-semibold text-positive">{money(change)}</Money>
         </div>
@@ -209,15 +210,15 @@ export function ReceiptSheet({
         </dl>
 
         {unverified ? (
-          <p className="rounded-md border-l-2 border-honey bg-honey/15 px-3 py-2 text-xs text-ink">
+          <p className="rounded-xl border-l-2 border-honey bg-honey/15 px-3 py-2 text-xs text-ink">
             Payment recorded on this device but not yet confirmed with the provider.
           </p>
         ) : null}
 
-        {status.state === 'OFFLINE' ? (
+        {!online ? (
           <p className="flex items-center justify-center gap-1.5 text-xs text-ink-subtle">
             <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />
-            Saved on this device. It will sync on its own.
+            Saved on this device.
           </p>
         ) : null}
 

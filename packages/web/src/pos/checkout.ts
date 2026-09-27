@@ -108,7 +108,7 @@ export interface CheckoutInput {
   customerName: string
   note: string
   menu: MenuData
-  /** True only when the device has a live, verified server connection. */
+  /** True only when the device itself has a network connection. */
   online: boolean
   /**
    * When the sale actually happened, if that is not now.

@@ -94,7 +94,7 @@ export function ProductEditor({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && !busy && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay animate-slide-up sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-[32rem] sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 sm:animate-slide-in-right">
           <header className="flex items-center justify-between border-b border-line px-5 py-4 pad-safe-top">
             <Dialog.Title className="text-lg font-semibold text-ink">
@@ -239,7 +239,7 @@ export function ProductEditor({
                       disabled={!mayEdit}
                       title="Offer this size first"
                       className={cn(
-                        'shrink-0 rounded-lg border px-2 py-2 text-[0.6875rem] font-medium transition-colors',
+                        'shrink-0 rounded-full border px-2 py-2 text-[0.6875rem] font-medium transition-colors',
                         variant.isDefault
                           ? 'border-brand bg-brand-soft text-brand'
                           : 'border-line text-ink-subtle hover:text-ink',
@@ -253,7 +253,7 @@ export function ProductEditor({
                         onClick={() =>
                           set({ variants: draft.variants.filter((_, at) => at !== index) })
                         }
-                        className="shrink-0 rounded-lg p-2 text-ink-subtle hover:bg-danger/10 hover:text-danger"
+                        className="shrink-0 rounded-full p-2 text-ink-subtle hover:bg-danger/10 hover:text-danger"
                         aria-label="Remove this size"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden="true" />

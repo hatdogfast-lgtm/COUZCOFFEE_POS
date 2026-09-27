@@ -5,7 +5,7 @@ import { lowStockOf, type OrderTotals, type Product, type Sale } from '@pos/shar
 import { db } from '../db/database.ts'
 import { loadMenu, stockLevels, type StockMap } from '../db/repo.ts'
 import { Money } from '../components/ui/primitives.tsx'
-import { useMoney, useSession, useSettings, useSyncStatus } from '../app/providers.tsx'
+import { useMoney, useOnlineStatus, useSession, useSettings } from '../app/providers.tsx'
 import { useCart } from './useCart.ts'
 import {
   claimedValue,
@@ -46,7 +46,7 @@ export function PosScreen() {
   // Backdating is both a shop-wide switch and a permission: the shop decides
   // whether the feature exists at all, and the roles decide who may use it.
   const mayBackdate = tillPolicy(settings).backdatingEnabled && can('pos.backdate')
-  const status = useSyncStatus()
+  const online = useOnlineStatus()
   const cart = useCart()
 
   const [categoryId, setCategoryId] = useState<string>('all')
@@ -67,7 +67,7 @@ export function PosScreen() {
   } | null>(null)
 
   // The menu and the stock ledger both re-read whenever their tables change,
-  // including when a change arrives from another device via sync.
+  // including when a backup is restored or a menu file is imported.
   const menu = useLiveQuery(
     () =>
       db
@@ -146,7 +146,7 @@ export function PosScreen() {
         customerName: cart.cart.customerName,
         note: cart.cart.note,
         menu,
-        online: status.online,
+        online,
         occurredAt,
       })
 
@@ -233,7 +233,7 @@ export function PosScreen() {
           <button
             type="button"
             onClick={() => setShowPayment(true)}
-            className="rounded-md bg-accent px-4 py-2.5 text-[0.8125rem] font-bold text-accent-ink press"
+            className="rounded-full bg-accent px-4 py-2.5 text-[0.8125rem] font-bold text-accent-ink press"
           >
             Charge
           </button>

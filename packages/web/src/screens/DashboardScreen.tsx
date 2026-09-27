@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { TriangleAlert } from 'lucide-react'
+import { CreditCard, LayoutGrid, TrendingUp, TriangleAlert, Trophy, Users } from 'lucide-react'
 import type { OperatingExpense } from '@pos/shared'
 import {
   loadAnalytics,
@@ -13,7 +13,7 @@ import {
   type RangePreset,
 } from '../db/analytics.ts'
 import { BarList, ColumnChart, HeroFigure, StatTile, type BarRow } from '../components/charts/Charts.tsx'
-import { Badge } from '../components/ui/primitives.tsx'
+import { Badge, SectionHeading } from '../components/ui/primitives.tsx'
 import { useMoney, useSettings } from '../app/providers.tsx'
 import { buildProfitAndLoss, expensesIn } from '../db/expenses.ts'
 import { DASHBOARD_TILES, tileEnabled } from './reports/tiles.ts'
@@ -286,9 +286,9 @@ export function DashboardScreen() {
 
         <section className="rounded-2xl border border-line bg-surface p-4">
           <div className="mb-4 flex items-baseline justify-between gap-3">
-            <h2 className="text-sm font-medium text-ink">
+            <SectionHeading icon={<TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />}>
               Revenue by {analytics.range.granularity === 'HOUR' ? 'hour' : 'day'}
-            </h2>
+            </SectionHeading>
             {analytics.peak ? (
               <p className="text-[0.8125rem] text-ink-muted">
                 Busiest: <span className="font-medium text-ink">{analytics.peak.label}</span> ·{' '}
@@ -311,15 +311,15 @@ export function DashboardScreen() {
         <div className="grid gap-4 lg:grid-cols-2">
           <section className="rounded-2xl border border-line bg-surface p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-sm font-medium text-ink">Top products</h2>
-              <div className="flex gap-1 rounded-lg bg-surface-sunken p-0.5">
+              <SectionHeading icon={<Trophy className="h-3.5 w-3.5" aria-hidden="true" />}>Top products</SectionHeading>
+              <div className="flex gap-1 rounded-full bg-surface-sunken p-0.5">
                 {RANKINGS.map((entry) => (
                   <button
                     key={entry.value}
                     type="button"
                     onClick={() => setRanking(entry.value)}
                     className={cn(
-                      'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                      'rounded-full px-2 py-1 text-xs font-medium transition-colors',
                       ranking === entry.value ? 'bg-surface text-ink shadow-sm' : 'text-ink-subtle hover:text-ink',
                     )}
                   >
@@ -332,7 +332,9 @@ export function DashboardScreen() {
           </section>
 
           <section className="rounded-2xl border border-line bg-surface p-4">
-            <h2 className="mb-4 text-sm font-medium text-ink">Revenue by category</h2>
+            <SectionHeading className="mb-4" icon={<LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" />}>
+              Revenue by category
+            </SectionHeading>
             <BarList
               rows={analytics.categories.map((category) => ({
                 key: category.name,
@@ -346,7 +348,9 @@ export function DashboardScreen() {
           </section>
 
           <section className="rounded-2xl border border-line bg-surface p-4">
-            <h2 className="mb-4 text-sm font-medium text-ink">How people paid</h2>
+            <SectionHeading className="mb-4" icon={<CreditCard className="h-3.5 w-3.5" aria-hidden="true" />}>
+              How people paid
+            </SectionHeading>
             <BarList
               rows={analytics.payments.map((payment) => ({
                 key: payment.method,
@@ -368,7 +372,9 @@ export function DashboardScreen() {
           </section>
 
           <section className="rounded-2xl border border-line bg-surface p-4">
-            <h2 className="mb-4 text-sm font-medium text-ink">Staff</h2>
+            <SectionHeading className="mb-4" icon={<Users className="h-3.5 w-3.5" aria-hidden="true" />}>
+              Staff
+            </SectionHeading>
             <BarList
               rows={analytics.staff.map((row) => ({
                 key: row.userId,

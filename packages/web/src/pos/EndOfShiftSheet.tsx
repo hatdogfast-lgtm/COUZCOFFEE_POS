@@ -92,7 +92,7 @@ export function EndOfShiftSheet({ open, onClose }: { open: boolean; onClose: () 
                   <button
                     type="button"
                     onClick={() => setAddingExpense(true)}
-                    className="flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
+                    className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.8125rem] text-ink-muted transition-colors hover:text-ink"
                   >
                     <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                     Add an expense
@@ -100,7 +100,7 @@ export function EndOfShiftSheet({ open, onClose }: { open: boolean; onClose: () 
                 ) : null}
               </div>
 
-              <dl className="divide-y divide-line rounded-md border border-line">
+              <dl className="divide-y divide-line rounded-2xl border border-line">
                 {summary.expenses.length === 0 ? (
                   <Empty>Nothing recorded yet.</Empty>
                 ) : (
@@ -180,13 +180,13 @@ export function EndOfShiftSheet({ open, onClose }: { open: boolean; onClose: () 
               ) : null}
 
               {shift && !mayClose ? (
-                <p className="rounded-md bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
+                <p className="rounded-xl bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
                   You can see the figures but not close the day. A supervisor takes the Z reading.
                 </p>
               ) : null}
 
               {shift === null ? (
-                <p className="rounded-md bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
+                <p className="rounded-xl bg-surface-sunken px-3.5 py-2.5 text-[0.8125rem] text-ink-muted">
                   No shift is open, so there is nothing to close. The figures above still stand.
                 </p>
               ) : null}
@@ -262,7 +262,7 @@ function AddExpense({ userId, onDone }: { userId: string; onDone: () => void }) 
   }
 
   return (
-    <div className="mt-2 space-y-2 rounded-md border border-line p-3">
+    <div className="mt-2 space-y-2 rounded-2xl border border-line p-3">
       <div className="grid grid-cols-3 gap-1.5">
         {categories.map((entry) => (
           <button
@@ -270,7 +270,7 @@ function AddExpense({ userId, onDone }: { userId: string; onDone: () => void }) 
             type="button"
             onClick={() => setCategory(entry.code)}
             className={cn(
-              'rounded-lg border px-2 py-1.5 text-[0.6875rem] font-medium transition-colors press',
+              'rounded-full border px-2 py-1.5 text-[0.6875rem] font-medium transition-colors press',
               chosen?.code === entry.code ? 'border-brand bg-brand-soft text-ink' : 'border-line text-ink-muted',
             )}
           >
@@ -317,7 +317,7 @@ const countOf = (rows: Array<{ quantity: number }>): number =>
 
 function Tile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-line bg-surface-sunken px-3.5 py-3">
+    <div className="rounded-2xl border border-line bg-surface-sunken px-3.5 py-3">
       <p className="text-[0.8125rem] text-ink-muted">{label}</p>
       <p className="mt-0.5 text-2xl font-semibold tracking-tight text-ink">{value}</p>
     </div>
@@ -328,7 +328,7 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
       <h3 className="mb-1 text-[0.8125rem] font-medium text-ink-muted">{title}</h3>
-      <dl className="divide-y divide-line rounded-md border border-line">{children}</dl>
+      <dl className="divide-y divide-line rounded-2xl border border-line">{children}</dl>
     </section>
   )
 }

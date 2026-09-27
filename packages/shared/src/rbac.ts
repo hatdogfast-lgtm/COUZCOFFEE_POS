@@ -40,8 +40,6 @@ export const PERMISSIONS = [
   'settings.view',
   'settings.edit',
   'audit.view',
-  'sync.view',
-  'sync.manage',
   'device.manage',
   'backup.run',
   'backup.restore',
@@ -86,7 +84,6 @@ const SUPERVISOR_PERMISSIONS: Permission[] = [
   'inventory.receive',
   'recipe.view',
   'report.view',
-  'sync.view',
 ]
 
 const MANAGER_PERMISSIONS: Permission[] = [
@@ -105,7 +102,6 @@ const MANAGER_PERMISSIONS: Permission[] = [
   'staff.edit',
   'settings.view',
   'audit.view',
-  'sync.manage',
   'device.manage',
   'backup.run',
 ]
@@ -226,8 +222,6 @@ export const PERMISSION_GROUPS: Array<{ title: string; permissions: Permission[]
       'settings.view',
       'settings.edit',
       'audit.view',
-      'sync.view',
-      'sync.manage',
       'device.manage',
       'backup.run',
       'backup.restore',
@@ -270,8 +264,6 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'settings.view': 'See settings',
   'settings.edit': 'Change settings',
   'audit.view': 'See the audit trail',
-  'sync.view': 'See sync status',
-  'sync.manage': 'Connect and manage sync',
   'device.manage': 'Manage devices',
   'backup.run': 'Make a backup',
   'backup.restore': 'Restore a backup',

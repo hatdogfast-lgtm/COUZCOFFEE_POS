@@ -273,7 +273,7 @@ function Row({
           onClick={() => change({ active: !entry.active })}
           aria-pressed={entry.active}
           className={cn(
-            'shrink-0 rounded-lg border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors press disabled:opacity-50',
+            'shrink-0 rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors press disabled:opacity-50',
             entry.active ? 'border-brand bg-brand text-brand-ink' : 'border-line text-ink-subtle',
           )}
         >
@@ -284,7 +284,7 @@ function Row({
           <button
             type="button"
             onClick={() => setOpen((value) => !value)}
-            className="shrink-0 rounded-lg p-1.5 text-ink-subtle hover:bg-surface-sunken"
+            className="shrink-0 rounded-full p-1.5 text-ink-subtle hover:bg-surface-sunken"
             aria-label={`Settings for ${entry.name}`}
           >
             <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} aria-hidden="true" />
@@ -302,7 +302,7 @@ function Row({
                 `"${entry.name}" removed.`,
               )
             }}
-            className="shrink-0 rounded-lg p-1.5 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
+            className="shrink-0 rounded-full p-1.5 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
             aria-label={`Remove ${entry.name}`}
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -439,7 +439,7 @@ function RoleOptions({
                 disabled={disabled}
                 onClick={() => toggle(permission)}
                 className={cn(
-                  'rounded-lg border px-2 py-1 text-[0.6875rem] transition-colors press disabled:opacity-50',
+                  'rounded-full border px-2 py-1 text-[0.6875rem] transition-colors press disabled:opacity-50',
                   held.has(permission)
                     ? 'border-brand bg-brand-soft text-ink'
                     : 'border-line text-ink-subtle hover:text-ink',

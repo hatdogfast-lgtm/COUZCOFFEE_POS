@@ -159,7 +159,7 @@ export function ProductSheet({
       footer={
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-1 rounded-md border border-line-strong p-1">
+            <div className="flex items-center gap-1 rounded-full border border-line-strong p-1">
               <Button
                 variant="ghost"
                 size="icon"
@@ -214,7 +214,7 @@ export function ProductSheet({
                         type="button"
                         onClick={() => setVariantId(entry.id)}
                         className={cn(
-                          'rounded-md border px-3 py-3 text-center transition-colors press',
+                          'rounded-full border px-3 py-3 text-center transition-colors press',
                           entry.id === variantId
                             ? 'border-brand bg-brand-soft'
                             : 'border-line bg-surface hover:border-line-strong',
@@ -256,7 +256,7 @@ export function ProductSheet({
                           type="button"
                           onClick={() => toggleOption(groupId, option)}
                           className={cn(
-                            'flex items-center justify-between gap-2 rounded-md border px-3 py-2.5 text-left transition-colors press',
+                            'flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors press',
                             active ? 'border-brand bg-brand-soft' : 'border-line bg-surface hover:border-line-strong',
                           )}
                         >
@@ -281,14 +281,14 @@ export function ProductSheet({
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="e.g. extra hot, no foam"
                 maxLength={120}
-                className="h-11 w-full rounded-md border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+                className="h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-sm text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
               />
             </section>
 
             {availability && availability.makeable !== Infinity && availability.makeable < 6 ? (
               <div
                 className={cn(
-                  'flex items-start gap-2.5 rounded-md border-l-2 px-3.5 py-3 text-[0.8125rem] text-ink',
+                  'flex items-start gap-2.5 rounded-xl border-l-2 px-3.5 py-3 text-[0.8125rem] text-ink',
                   availability.outOfStock ? 'border-danger bg-danger/10' : 'border-honey bg-honey/15',
                 )}
               >
@@ -305,7 +305,7 @@ export function ProductSheet({
               <button
                 type="button"
                 onClick={() => setOverride(true)}
-                className="w-full rounded-md border border-dashed border-line-strong px-3.5 py-3 text-[0.8125rem] text-ink-muted hover:bg-surface-sunken"
+                className="w-full rounded-xl border border-dashed border-line-strong px-3.5 py-3 text-[0.8125rem] text-ink-muted hover:bg-surface-sunken"
               >
                 Sell anyway and let stock go negative
               </button>

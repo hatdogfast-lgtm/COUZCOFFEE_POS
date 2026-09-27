@@ -134,7 +134,7 @@ function Choice({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors press disabled:opacity-50',
+        'flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors press disabled:opacity-50',
         active ? 'border-brand bg-brand text-brand-ink' : 'border-line text-ink-muted hover:text-ink',
       )}
     >

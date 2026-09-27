@@ -18,27 +18,40 @@ import {
   type CurrencyFormat,
   type Money,
   type Permission,
-  type SyncSnapshot,
   type User,
 } from '@pos/shared'
 import { listRoles, permissionsOf } from '../db/shopLists.ts'
 import { db } from '../db/database.ts'
 import { update } from '../db/write.ts'
-import { syncEngine } from '../sync/engine.ts'
 import { hexToRgbChannels, readableInk } from '../lib/utils.ts'
 
 /**
- * Application-wide context: who is signed in, how the business is configured,
- * and what the sync engine is currently doing.
+ * Application-wide context: who is signed in and how the business is
+ * configured.
  */
 
-// ------------------------------------------------------------------- sync ---
+// ------------------------------------------------------------ connectivity ---
 
-export function useSyncStatus(): SyncSnapshot {
+/**
+ * Whether this device currently has a network path at all.
+ *
+ * There is no server this till talks to, so this is nothing more than the
+ * browser's own online/offline signal. The one thing it still decides is
+ * whether a card or e-wallet payment can be treated as verified, or only as
+ * recorded on the operator's word.
+ */
+export function useOnlineStatus(): boolean {
   return useSyncExternalStore(
-    useCallback((onChange: () => void) => syncEngine.subscribe(onChange), []),
-    useCallback(() => syncEngine.getSnapshot(), []),
-    useCallback(() => syncEngine.getSnapshot(), []),
+    useCallback((onChange: () => void) => {
+      window.addEventListener('online', onChange)
+      window.addEventListener('offline', onChange)
+      return () => {
+        window.removeEventListener('online', onChange)
+        window.removeEventListener('offline', onChange)
+      }
+    }, []),
+    () => navigator.onLine,
+    () => true,
   )
 }
 

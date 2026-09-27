@@ -111,7 +111,7 @@ export function InventoryScreen() {
               <button
                 type="button"
                 onClick={() => setSearch('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-ink-subtle hover:bg-surface-sunken"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-subtle hover:bg-surface-sunken"
                 aria-label="Clear search"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -148,7 +148,7 @@ export function InventoryScreen() {
           <div className="hidden shrink-0 items-center gap-4 text-sm sm:flex">
             {summary.out > 0 ? (
               <span className="flex items-center gap-1.5 text-danger">
-                <TriangleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+                <TriangleAlert className="h-3.5 w-3.5 animate-pulse" aria-hidden="true" />
                 {summary.out} out
               </span>
             ) : null}

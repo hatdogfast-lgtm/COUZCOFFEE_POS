@@ -147,7 +147,7 @@ export function BrandingPanel() {
                 accept="image/png,image/jpeg,image/webp,image/svg+xml"
                 disabled={!mayEdit || busy}
                 onChange={(event) => void chooseLogo(event.target.files?.[0])}
-                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90 disabled:opacity-50"
+                className="block w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90 disabled:opacity-50"
               />
               {branding.logoDataUrl ? (
                 <Button

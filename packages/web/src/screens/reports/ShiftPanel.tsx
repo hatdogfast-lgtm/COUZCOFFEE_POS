@@ -93,7 +93,7 @@ export function ShiftPanel() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-base font-semibold text-ink">{shift.code}</h2>
-                    <Badge tone="online">Open</Badge>
+                    <Badge tone="positive">Open</Badge>
                   </div>
                   <p className="mt-0.5 text-[0.8125rem] text-ink-muted">
                     Since {new Date(shift.openedAt).toLocaleString()} · float {money(shift.openingFloat)}
@@ -490,7 +490,7 @@ function ConfirmSheet({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && !busy && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content aria-describedby={undefined} className="fixed inset-x-0 bottom-0 z-50 max-h-[94dvh] overflow-y-auto rounded-t-3xl border-t border-line bg-surface px-5 pb-6 pt-5 shadow-overlay animate-slide-up pad-safe-bottom sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:border">
           <Dialog.Title className="text-lg font-semibold text-ink">{title}</Dialog.Title>
           {children}

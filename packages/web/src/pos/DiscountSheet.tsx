@@ -91,7 +91,7 @@ export function DiscountSheet({
                   type="button"
                   onClick={() => setType(option.type)}
                   className={cn(
-                    'rounded-md border p-3 text-left transition-colors press',
+                    'rounded-full border p-3 text-left transition-colors press',
                     type === option.type ? 'border-brand bg-brand-soft' : 'border-line hover:border-line-strong',
                   )}
                 >
@@ -103,7 +103,7 @@ export function DiscountSheet({
 
             {statutory ? (
               <div className="space-y-4">
-                <div className="rounded-md bg-surface-sunken px-3.5 py-3 text-[0.8125rem] text-ink-muted">
+                <div className="rounded-xl bg-surface-sunken px-3.5 py-3 text-[0.8125rem] text-ink-muted">
                   VAT is removed from the sale first, then {statutoryRate}% is taken off the VAT-exempt amount.
                   Both figures are printed separately on the receipt.
                 </div>
@@ -149,7 +149,7 @@ export function DiscountSheet({
             )}
 
             {!allowed ? (
-              <p className="rounded-md border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
+              <p className="rounded-xl border-l-2 border-honey bg-honey/15 px-3.5 py-3 text-[0.8125rem] text-ink">
                 Your role cannot apply this kind of discount. A supervisor or manager needs to sign in.
               </p>
             ) : null}

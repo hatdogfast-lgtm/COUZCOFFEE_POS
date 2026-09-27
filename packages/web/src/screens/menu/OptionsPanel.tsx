@@ -16,9 +16,12 @@ import {
   type ModifierGroup,
   type ModifierOption,
   type ModifierSelection,
+  type Category,
+  type Product,
   type Unit,
 } from '@pos/shared'
 import { db } from '../../db/database.ts'
+import { listCategories, loadProductDraft, updateProduct } from '../../db/products.ts'
 import {
   addModifierOption,
   createModifierGroup,
@@ -59,6 +62,13 @@ export function OptionsPanel() {
       .filter((row) => row.deletedAt === null && row.active)
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [], [] as Ingredient[])
+  // Which products offer a group is stored on the product; the category chips
+  // on each card are a shortcut for setting it on a whole shelf at once.
+  const categories = useLiveQuery(() => listCategories(), [], [] as Category[])
+  const products = useLiveQuery(async () => {
+    const rows = await db.products.toArray()
+    return rows.filter((row) => row.deletedAt === null)
+  }, [], [] as Product[])
   const mayEdit = can('product.edit')
 
   // A save made on the way somewhere else - leaving a price box for the
@@ -193,6 +203,8 @@ export function OptionsPanel() {
               group={group}
               options={options}
               usedBy={usedBy}
+              categories={categories}
+              products={products}
               ingredients={ingredients}
               mayEdit={mayEdit}
               busy={busy}
@@ -211,6 +223,8 @@ function GroupCard({
   group,
   options,
   usedBy,
+  categories,
+  products,
   ingredients,
   mayEdit,
   busy,
@@ -221,6 +235,8 @@ function GroupCard({
   group: ModifierGroup
   options: ModifierOption[]
   usedBy: number
+  categories: Category[]
+  products: Product[]
   ingredients: Ingredient[]
   mayEdit: boolean
   busy: boolean
@@ -237,6 +253,36 @@ function GroupCard({
     () => new Map(ingredients.map((entry) => [entry.id, entry])),
     [ingredients],
   )
+
+  // For each category: how many of its products offer this group, out of how
+  // many. A chip is lit when every product on that shelf asks the question.
+  const shelves = useMemo(
+    () =>
+      categories
+        .map((category) => {
+          const own = products.filter((product) => product.categoryId === category.id)
+          const offering = own.filter((product) => product.modifierGroupIds.includes(group.id)).length
+          return { category, total: own.length, offering }
+        })
+        .filter((entry) => entry.total > 0),
+    [categories, products, group.id],
+  )
+
+  // Put the group on, or take it off, every product in a category. Each
+  // product goes through the same save as the product editor, so the audit
+  // trail and outbox see ordinary edits.
+  async function offerOn(category: Category, on: boolean): Promise<void> {
+    const targets = products.filter(
+      (product) => product.categoryId === category.id && product.modifierGroupIds.includes(group.id) !== on,
+    )
+    for (const product of targets) {
+      const draft = await loadProductDraft(product)
+      const modifierGroupIds = on
+        ? [...draft.modifierGroupIds, group.id]
+        : draft.modifierGroupIds.filter((id) => id !== group.id)
+      await updateProduct({ product, draft: { ...draft, modifierGroupIds }, userId })
+    }
+  }
 
   return (
     <section className={cn('rounded-2xl border bg-surface', group.active ? 'border-line' : 'border-line opacity-60')}>
@@ -279,7 +325,7 @@ function GroupCard({
                 if (!window.confirm(`Remove "${group.name}"? It will be taken off ${usedBy} product(s).`)) return
                 void onRun(() => removeModifierGroup({ group, userId }), `"${group.name}" removed.`)
               }}
-              className="rounded-lg p-2 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
+              className="rounded-full p-2 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
               aria-label={`Remove ${group.name}`}
             >
               <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -287,6 +333,42 @@ function GroupCard({
           ) : null}
         </div>
       </div>
+
+      {shelves.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+          <span className="text-[0.8125rem] font-medium text-ink-muted">Offered on</span>
+          {shelves.map(({ category, total, offering }) => {
+            const all = offering === total
+            return (
+              <button
+                key={category.id}
+                type="button"
+                disabled={!mayEdit || busy}
+                onClick={() =>
+                  void onRun(
+                    () => offerOn(category, !all),
+                    all
+                      ? `"${group.name}" taken off ${category.name}.`
+                      : `"${group.name}" now offered on every ${category.name} item.`,
+                  )
+                }
+                className={cn(
+                  'rounded-full border px-3.5 py-1.5 text-sm transition-colors press disabled:opacity-60',
+                  all ? 'border-brand bg-brand-soft text-ink' : 'border-line text-ink-muted hover:text-ink',
+                )}
+                aria-pressed={all}
+              >
+                {category.name}
+                {offering > 0 && !all ? (
+                  <span className="ml-1.5 text-[0.75rem] text-ink-subtle">
+                    {offering}/{total}
+                  </span>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
 
       <ul className="divide-y divide-line">
         {options.map((option) => (
@@ -334,7 +416,7 @@ function GroupCard({
                   onClick={() => setStockFor((current) => (current === option.id ? null : option.id))}
                   aria-expanded={stockFor === option.id}
                   className={cn(
-                    'rounded-lg p-1.5 hover:bg-surface-sunken hover:text-ink',
+                    'rounded-full p-1.5 hover:bg-surface-sunken hover:text-ink',
                     stockFor === option.id ? 'text-ink' : 'text-ink-subtle',
                   )}
                   aria-label={`Stock used by ${option.name}`}
@@ -348,7 +430,7 @@ function GroupCard({
                   type="button"
                   disabled={busy}
                   onClick={() => void onRun(() => removeModifierOption({ option, userId }))}
-                  className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
+                  className="rounded-full p-1.5 text-ink-subtle hover:bg-surface-sunken hover:text-danger"
                   aria-label={`Remove ${option.name}`}
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -587,7 +669,7 @@ function StockEditor({
                     if (!next) return
                     setLine(index, { ingredientId: next.id, unit: naturalUnit(0, next.dimension) })
                   }}
-                  className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-sm text-ink focus:border-brand focus:outline-none"
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-line bg-surface px-2 text-sm text-ink focus:border-brand focus:outline-none"
                   aria-label="Ingredient"
                 >
                   {!ingredient ? <option value={line.ingredientId}>Unknown ingredient</option> : null}
@@ -610,7 +692,7 @@ function StockEditor({
                   value={line.unit}
                   disabled={busy}
                   onChange={(event) => setLine(index, { unit: event.target.value as Unit })}
-                  className="h-10 rounded-lg border border-line bg-surface px-2 text-sm text-ink focus:border-brand focus:outline-none"
+                  className="h-10 rounded-xl border border-line bg-surface px-2 text-sm text-ink focus:border-brand focus:outline-none"
                   aria-label="Unit"
                 >
                   {units.map((entry) => (
@@ -623,7 +705,7 @@ function StockEditor({
                   type="button"
                   disabled={busy}
                   onClick={() => setLines((current) => current.filter((_, at) => at !== index))}
-                  className="rounded-lg p-1.5 text-ink-subtle hover:bg-surface hover:text-danger"
+                  className="rounded-full p-1.5 text-ink-subtle hover:bg-surface hover:text-danger"
                   aria-label="Remove this line"
                 >
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -669,7 +751,7 @@ function Toggle({
       onClick={onClick}
       aria-pressed={on}
       className={cn(
-        'rounded-lg border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors press disabled:opacity-50',
+        'rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium transition-colors press disabled:opacity-50',
         on ? 'border-brand bg-brand text-brand-ink' : 'border-line text-ink-subtle hover:text-ink',
       )}
     >

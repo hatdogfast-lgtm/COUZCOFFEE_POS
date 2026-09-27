@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { toast } from 'sonner'
-import { Plus, Trash2, TriangleAlert, X } from 'lucide-react'
+import { Plus, Receipt, Trash2, TriangleAlert, X } from 'lucide-react'
 import {
   fromDecimal,
   type ExpenseCategoryEntry,
@@ -17,7 +17,7 @@ import {
 } from '../../db/expenses.ts'
 import { listExpenseCategories, nameOf } from '../../db/shopLists.ts'
 import type { Analytics } from '../../db/analytics.ts'
-import { Button, Field, Input } from '../../components/ui/primitives.tsx'
+import { Button, Field, Input, SectionHeading } from '../../components/ui/primitives.tsx'
 import { useMoney, useSession } from '../../app/providers.tsx'
 import { cn } from '../../lib/utils.ts'
 
@@ -67,8 +67,8 @@ export function ProfitAndLoss({ analytics }: { analytics: Analytics }) {
     <section className="rounded-2xl border border-line bg-surface">
       <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
-          <h2 className="text-sm font-medium text-ink">Profit and loss</h2>
-          <p className="text-[0.8125rem] text-ink-subtle">{analytics.range.label}</p>
+          <SectionHeading icon={<Receipt className="h-3.5 w-3.5" aria-hidden="true" />}>Profit and loss</SectionHeading>
+          <p className="ml-9 text-[0.8125rem] text-ink-subtle">{analytics.range.label}</p>
         </div>
         {mayEdit ? (
           <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
@@ -163,7 +163,7 @@ export function ProfitAndLoss({ analytics }: { analytics: Analytics }) {
                           .then(() => toast.success('Removed.'))
                           .catch(() => toast.error('That could not be removed.'))
                       }
-                      className="rounded-lg p-1.5 text-ink-subtle transition-colors hover:bg-danger/10 hover:text-danger"
+                      className="rounded-full p-1.5 text-ink-subtle transition-colors hover:bg-danger/10 hover:text-danger"
                       aria-label={`Remove ${expense.label}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -291,7 +291,7 @@ function ExpenseForm({ staff, onClose }: { staff: User[]; onClose: () => void })
             type="button"
             onClick={() => setCategory(entry.code)}
             className={cn(
-              'rounded-lg border px-2 py-2 text-xs font-medium transition-colors press no-select',
+              'rounded-full border px-2 py-2 text-xs font-medium transition-colors press no-select',
               chosen?.code === entry.code
                 ? 'border-brand bg-brand text-brand-ink'
                 : 'border-line bg-surface text-ink-muted hover:text-ink',

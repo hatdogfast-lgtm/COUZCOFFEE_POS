@@ -8,12 +8,11 @@ import {
   type SyncMeta,
   type User,
 } from '@pos/shared'
-import type { BusinessSettings, OutboxEntry, Sale } from '@pos/shared'
+import type { BusinessSettings, Sale } from '@pos/shared'
 import { clearBusinessData, db, META_KEYS, readMeta, tableFor, writeMeta } from './database.ts'
 import { identity } from './identity.ts'
 import { appliedMigrationIds, knownMigrationIds } from './migrations.ts'
 import { commit, created, stamp } from './write.ts'
-import { syncEngine } from '../sync/engine.ts'
 
 /**
  * Backup and restore.
@@ -78,20 +77,6 @@ export interface BackupFile {
 }
 
 export type RestoreMode = 'REPLACE' | 'MERGE' | 'CATCH_UP'
-
-/**
- * What should happen with the server afterwards.
- *
- * This is the sharpest decision in a restore and there is no safe default, so
- * it is asked as a question rather than buried in the implementation.
- */
-export type RestoreSyncChoice =
-  /** Re-read the server from the beginning; where it has a record, it wins. */
-  | 'RESYNC'
-  /** This device is the surviving copy: queue everything up to a rebuilt server. */
-  | 'PUSH'
-  /** Cut this device off from the server entirely so nothing can be pushed. */
-  | 'STANDALONE'
 
 // ------------------------------------------------------------------ making --
 
@@ -292,8 +277,6 @@ export interface BackupInspection {
   checksumOk: boolean
   fromThisDevice: boolean
   totalNewHere: number
-  /** Work queued on this device that has not reached the server yet. */
-  unsyncedCount: number
   file: BackupFile
 }
 
@@ -404,19 +387,6 @@ export async function inspectBackup(input: File | string): Promise<BackupInspect
     })
   }
 
-  const unsyncedCount = await db.outbox
-    .where('status')
-    .anyOf('SYNC_PENDING', 'SYNCING', 'SYNC_FAILED', 'CONFLICT')
-    .count()
-
-  if (unsyncedCount > 0) {
-    problems.push({
-      severity: 'WARNING',
-      replaceOnly: true,
-      message: `${unsyncedCount} record(s) on this device have not reached the server yet. Replacing everything will discard them. Sync first if you can.`,
-    })
-  }
-
   return {
     manifest: file.manifest,
     problems,
@@ -424,7 +394,6 @@ export async function inspectBackup(input: File | string): Promise<BackupInspect
     checksumOk,
     fromThisDevice: file.manifest.deviceId === identity().deviceId,
     totalNewHere,
-    unsyncedCount,
     file,
   }
 }
@@ -446,26 +415,8 @@ export interface RestoreOutcome {
   mode: RestoreMode
   written: number
   skipped: number
-  queuedForServer: number
   /** The receipt number the next sale on this device will take. */
   nextReceiptNumber: number
-}
-
-function outboxRowFor(entity: SyncEntity, record: SyncMeta, now: number): OutboxEntry {
-  return {
-    id: newId(now),
-    entity,
-    entityId: record.id,
-    op: 'UPDATE',
-    version: record.version,
-    payload: record,
-    status: 'SYNC_PENDING',
-    attempts: 0,
-    lastError: null,
-    createdAt: now,
-    lastAttemptAt: null,
-    nextAttemptAt: now,
-  }
 }
 
 /** This terminal's two-character code, exactly as checkout stamps it on a receipt. */
@@ -517,16 +468,15 @@ async function recomputeCounters(settings: BusinessSettings | undefined): Promis
  * mistake rather than when a device has been lost.
  *
  * CATCH_UP is the two tills swapping notes: it brings in what the other one
- * did and lets its later edits win, using exactly the rules the server sync
- * uses. It is how a shop keeps two devices in step with a file on a memory
- * stick when there is no server between them.
+ * did and lets its later edits win, using the same version-and-clock rules
+ * everywhere else in this app that two copies of a record must be compared.
+ * It is how a shop keeps two devices in step by passing a file between them.
  *
  * None of them touch this device's identity.
  */
 export async function restoreBackup(input: {
   inspection: BackupInspection
   mode: RestoreMode
-  sync: RestoreSyncChoice
   user: User
 }): Promise<RestoreOutcome> {
   const { inspection, mode, user } = input
@@ -534,18 +484,10 @@ export async function restoreBackup(input: {
     throw new Error('This backup did not pass its checks and will not be restored.')
   }
 
-  // The engine must not be mid-cycle while the tables move underneath it: a
-  // push already in flight would write its result back into an outbox that no
-  // longer has the row, and a pull would drop server records into tables that
-  // are about to be emptied. Stopping it also parks the timers and the socket.
-  syncEngine.stop()
-  await syncEngine.settle()
-
   const now = Date.now()
   const tables = inspection.file.tables
   let written = 0
   let skipped = 0
-  let queued = 0
   const conflicts: SyncConflictRecord[] = []
 
   if (mode === 'REPLACE') {
@@ -563,7 +505,7 @@ export async function restoreBackup(input: {
     // One table at a time: a single transaction spanning every table with a
     // large backup in it is a long lock, and a partly-written table can be
     // fixed by running the restore again whereas a wedged database cannot.
-    await db.transaction('rw', [table, db.outbox], async () => {
+    await db.transaction('rw', table, async () => {
       let toWrite = rows
 
       if (mode === 'MERGE') {
@@ -611,16 +553,12 @@ export async function restoreBackup(input: {
       if (toWrite.length > 0) {
         await table.bulkPut(toWrite as unknown as Array<{ id: string }>)
         written += toWrite.length
-        if (input.sync === 'PUSH') {
-          await db.outbox.bulkPut(toWrite.map((row) => outboxRowFor(entity, row, now)))
-          queued += toWrite.length
-        }
       }
     })
   }
 
-  // Anything the two devices disagreed about is parked for a person to settle,
-  // never guessed at. The sync screen already knows how to show these.
+  // Anything the two devices disagreed about is parked here for a person to
+  // settle by comparing the two devices directly, never guessed at.
   if (conflicts.length > 0) await db.conflicts.bulkPut(conflicts)
 
   const settings = ((await db.settings.toArray()) as BusinessSettings[]).find(
@@ -637,19 +575,6 @@ export async function restoreBackup(input: {
     : []
   if (mode === 'REPLACE') {
     await writeMeta(META_KEYS.migrationsApplied, carried)
-  }
-
-  if (input.sync === 'STANDALONE') {
-    // Nothing restored can ever be pushed, which is the point: this device is
-    // being used to look at old data, not to re-assert it over a live shop.
-    await syncEngine.forgetServer()
-  } else {
-    // The device now holds a different set of records than the server last
-    // told it about, so it must ask again from the beginning rather than carry
-    // on from a cursor describing a database that no longer exists. The engine
-    // caches the cursor in memory at start(), so only the reload below makes
-    // this take effect.
-    await writeMeta(META_KEYS.cursor, 0)
   }
 
   // Whatever the file said, this device is set up now - otherwise the next
@@ -676,7 +601,6 @@ export async function restoreBackup(input: {
               fromDevice: inspection.manifest.deviceLabel,
               written,
               skipped,
-              server: input.sync,
               nextReceiptNumber,
             }),
             reason: `Restored a backup of ${inspection.manifest.businessName} taken ${new Date(inspection.manifest.createdAt).toLocaleString()}`,
@@ -689,18 +613,15 @@ export async function restoreBackup(input: {
     now,
   )
 
-  return { mode, written, skipped, queuedForServer: queued, nextReceiptNumber }
+  return { mode, written, skipped, nextReceiptNumber }
 }
 
 /**
  * Which of two versions of the same record should stand.
  *
- * The rules are the ones the server applies, so a shop that swaps files gets
- * the same answers as a shop that syncs properly - and a shop that does both
- * never sees them disagree.
- *
- * With no server to order the changes, the tie-breaks have to be decided from
- * the records alone, and they have to be decided the same way on both devices.
+ * There is no server to order the changes, so the tie-breaks have to be
+ * decided from the records alone, and they have to be decided the same way on
+ * both devices.
  * Version first, then the clock, then the device id: arbitrary, but identical
  * on both sides, which is the only property that matters. Both tills land on
  * the same record rather than each keeping its own.

@@ -153,7 +153,7 @@ export function RecipesScreen() {
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-ink-subtle hover:bg-surface-sunken"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-subtle hover:bg-surface-sunken"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -237,19 +237,17 @@ export function RecipesScreen() {
                       <span className="lg:hidden">
                         <span className="block text-[0.6875rem] text-ink-subtle">Margin</span>
                       </span>
-                      <span
-                        className={cn(
-                          'tabular block text-right text-[0.9375rem] font-semibold',
-                          !row.hasRecipe
-                            ? 'text-ink-subtle'
-                            : row.margin >= 60
-                              ? 'text-positive'
-                              : row.margin >= 40
-                                ? 'text-ink'
-                                : 'text-danger',
+                      <span className="lg:flex lg:justify-end">
+                        {row.hasRecipe ? (
+                          <Badge
+                            tone={row.margin >= 60 ? 'positive' : row.margin >= 40 ? 'neutral' : 'danger'}
+                            className="tabular"
+                          >
+                            {Math.round(row.margin)}%
+                          </Badge>
+                        ) : (
+                          <span className="tabular block text-right text-[0.9375rem] text-ink-subtle">—</span>
                         )}
-                      >
-                        {row.hasRecipe ? `${Math.round(row.margin)}%` : '—'}
                       </span>
                     </span>
                   </button>

@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils.ts'
  *
  * A shop whose staff have been ringing up sales on one till and who now open
  * the website on the office computer have a file and nowhere to put it: the
- * setup screen offers a new shop or a server to join, and neither is what they
+ * setup screen otherwise only offers a new, empty shop, which is not what they
  * have. Making them invent a throwaway shop first, only to overwrite it a
  * minute later, is the kind of step that makes people distrust the whole
  * thing.
@@ -54,7 +54,6 @@ export function StartFromBackup({ onDone }: { onDone: () => Promise<void> | void
       await restoreBackup({
         inspection,
         mode: 'REPLACE',
-        sync: 'STANDALONE',
         user: (owner ?? { id: 'SETUP', name: 'Setup' }) as never,
       })
       await onDone()

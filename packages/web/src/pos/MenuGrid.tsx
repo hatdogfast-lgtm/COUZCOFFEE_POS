@@ -56,13 +56,13 @@ export function MenuGrid({
             value={search}
             onChange={(event) => onSearch(event.target.value)}
             placeholder="Search the menu"
-            className="h-10 w-full rounded-md border border-line-strong bg-surface pl-9 pr-9 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
+            className="h-10 w-full rounded-full border border-line-strong bg-surface pl-9 pr-9 text-[0.9375rem] text-ink placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
           />
           {search ? (
             <button
               type="button"
               onClick={() => onSearch('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-1 text-ink-subtle hover:bg-surface-sunken"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-subtle hover:bg-surface-sunken"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -128,7 +128,7 @@ function CategoryChip({
       type="button"
       onClick={onClick}
       className={cn(
-        'shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors press no-select',
+        'shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors press no-select',
         active
           ? 'border-brand bg-brand text-brand-ink'
           : 'border-line-strong bg-surface text-ink-muted hover:text-ink',
@@ -179,8 +179,8 @@ function ProductTile({
       onClick={onSelect}
       disabled={blocked}
       className={cn(
-        'flex min-h-[5.25rem] flex-col justify-between rounded-md border border-line bg-surface p-2.5 text-left transition-colors press no-select',
-        'hover:border-brand-light',
+        'flex min-h-[5.25rem] flex-col justify-between rounded-2xl border border-line bg-surface p-2.5 text-left transition-colors press no-select',
+        !blocked && 'lift hover:border-brand-light',
         blocked && 'opacity-50 hover:border-line',
       )}
     >

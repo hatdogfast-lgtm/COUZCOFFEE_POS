@@ -16,10 +16,13 @@ import { cn } from '../../lib/utils.ts'
  * primary button is dark text on Caramel because Caramel cannot carry light
  * text; a warning badge is dark text on Honey for the same reason; and a card
  * has an edge because cream on milk is invisible without one.
+ *
+ * Every button is a pill (`rounded-full`), and a square `icon` size becomes a
+ * perfect circle for free - the shape a thumb reaches for, not a spreadsheet.
  */
 
 const buttonStyles = cva(
-  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-semibold no-select press disabled:pointer-events-none disabled:opacity-45 transition-colors',
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold no-select press disabled:pointer-events-none disabled:opacity-45 transition-colors',
   {
     variants: {
       variant: {
@@ -64,7 +67,7 @@ Button.displayName = 'Button'
 
 export const Card = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('rounded-lg border border-line bg-surface', className)} {...props} />
+    <div ref={ref} className={cn('rounded-2xl border border-line bg-surface', className)} {...props} />
   ),
 )
 Card.displayName = 'Card'
@@ -74,7 +77,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     <input
       ref={ref}
       className={cn(
-        'h-11 w-full rounded-md border border-line-strong bg-surface px-3.5 text-[0.9375rem] text-ink',
+        'h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-[0.9375rem] text-ink',
         'placeholder:text-ink-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25',
         'disabled:opacity-50 transition-colors',
         className,
@@ -121,18 +124,16 @@ export function Field({
   )
 }
 
-const badgeStyles = cva('micro inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5', {
+const badgeStyles = cva('micro inline-flex items-center gap-1 rounded-full px-2 py-0.5', {
   variants: {
     tone: {
       neutral: 'bg-surface-sunken text-ink-muted',
       brand: 'bg-brand-soft text-brand',
       /** A 10% tint at most: Matcha clears AA on cream by only 0.28. */
-      online: 'bg-positive/10 text-positive',
-      pending: 'bg-honey text-honey-ink',
+      positive: 'bg-positive/10 text-positive',
       /** Honey cannot carry light text, so the chip is solid with dark ink. */
       warning: 'bg-honey text-honey-ink',
       danger: 'bg-danger text-danger-ink',
-      offline: 'bg-ink-subtle/15 text-ink-muted',
     },
   },
   defaultVariants: { tone: 'neutral' },
@@ -194,6 +195,41 @@ export function Figure({
   )
 }
 
+/** A section title with a small icon chip beside it - used sparingly, for a card that deserves the extra weight. */
+export function SectionHeading({
+  icon,
+  children,
+  className,
+}: {
+  icon: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('flex items-center gap-2', className)}>
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-line bg-brand-soft text-brand">
+        {icon}
+      </span>
+      <h2 className="text-sm font-medium text-ink">{children}</h2>
+    </div>
+  )
+}
+
+/**
+ * A soft blurred accent tucked in a corner - the one place warmth is allowed
+ * to bleed past a hairline. Reserve it for a hero or summary surface, not
+ * every card, or it stops reading as light and starts reading as noise. The
+ * host needs `relative overflow-hidden`; this only paints, never affects layout.
+ */
+export function Glow({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn('pointer-events-none absolute -right-8 -top-12 h-40 w-40 rounded-full bg-accent/25 blur-[56px]', className)}
+    />
+  )
+}
+
 export function Spinner({ className }: { className?: string }) {
   return (
     <svg className={cn('h-4 w-4 animate-spin', className)} viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -241,7 +277,7 @@ export function Sheet({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && dismissible && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content
           {...(description ? {} : { 'aria-describedby': undefined })}
           className={cn(

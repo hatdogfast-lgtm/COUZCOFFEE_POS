@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Delete, Loader2 } from 'lucide-react'
 import { PIN_LENGTH, roleLabel, type User } from '@pos/shared'
 import { db } from '../db/database.ts'
 import { Micro } from '../components/ui/primitives.tsx'
-import { ConnectionBadge } from '../components/ConnectionBadge.tsx'
 import { useSession, useSettings } from '../app/providers.tsx'
 import { cn } from '../lib/utils.ts'
 
@@ -38,25 +37,28 @@ export function LockScreen() {
     if (staff && staff.length === 1 && !selected) setSelected(staff[0] ?? null)
   }, [staff, selected])
 
+  // A ref, not the `busy` state, guards re-entry: with `busy` as a dependency
+  // the effect re-ran on setBusy(true) and cancelled the very check it had
+  // just started, leaving a wrong PIN stuck on "Checking…".
+  const checking = useRef(false)
   useEffect(() => {
-    if (pin.length !== PIN_LENGTH || !selected || busy) return
+    if (pin.length !== PIN_LENGTH || !selected || checking.current) return
 
-    let cancelled = false
+    checking.current = true
     setBusy(true)
     void (async () => {
       const result = await signIn(selected.id, pin)
-      if (cancelled) return
       if (!result.ok) {
         setError(result.message ?? 'That PIN was not correct.')
         setPin('')
         // A short shake, then let them try again.
-        setTimeout(() => setBusy(false), 260)
+        setTimeout(() => {
+          checking.current = false
+          setBusy(false)
+        }, 260)
       }
     })()
-    return () => {
-      cancelled = true
-    }
-  }, [pin, selected, busy, signIn])
+  }, [pin, selected, signIn])
 
   function press(digit: string): void {
     setError(null)
@@ -70,9 +72,9 @@ export function LockScreen() {
       <header className="flex items-end justify-between gap-4 border-b border-line px-5 pb-4 pt-5">
         <div className="flex min-w-0 items-center gap-3">
           {settings?.branding.logoDataUrl ? (
-            <img src={settings.branding.logoDataUrl} alt="" className="h-11 w-11 rounded-md object-cover" />
+            <img src={settings.branding.logoDataUrl} alt="" className="h-11 w-11 rounded-full object-cover" />
           ) : (
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent font-display text-xl font-medium text-accent-ink">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent font-display text-xl font-medium text-accent-ink">
               {businessName.slice(0, 1).toUpperCase()}
             </div>
           )}
@@ -83,7 +85,6 @@ export function LockScreen() {
             <Micro className="mt-1.5">Sign in to start selling</Micro>
           </div>
         </div>
-        <ConnectionBadge compact />
       </header>
 
       <div className="flex flex-1 items-start justify-center px-5 py-6 sm:items-center">
@@ -137,7 +138,12 @@ export function LockScreen() {
                 <Micro>{roleLabel(selected.role)}</Micro>
               </div>
 
-              <div className={cn('flex justify-center gap-3', error && 'animate-[fade-in_150ms]')}>
+              <div
+                className={cn(
+                  'mx-auto flex w-fit items-center gap-3 rounded-full border border-line-strong bg-surface-sunken px-6 py-3',
+                  error && 'animate-[fade-in_150ms]',
+                )}
+              >
                 {Array.from({ length: PIN_LENGTH }, (_, index) => (
                   <span
                     key={index}
@@ -213,7 +219,7 @@ function PinKey({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'flex h-16 items-center justify-center rounded-md border text-2xl transition-colors press no-select disabled:pointer-events-none disabled:opacity-45',
+        'mx-auto flex h-16 w-16 items-center justify-center rounded-full border text-2xl transition-colors press no-select disabled:pointer-events-none disabled:opacity-45',
         muted
           ? 'border-transparent text-ink-muted hover:bg-canvas'
           : 'border-line bg-surface font-display font-medium text-ink hover:border-line-strong hover:bg-canvas',

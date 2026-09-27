@@ -22,7 +22,6 @@ import {
   saveBackup,
   type BackupInspection,
   type RestoreMode,
-  type RestoreSyncChoice,
   type SavedBackup,
 } from '../../db/backup.ts'
 import { Button, Field, Input } from '../../components/ui/primitives.tsx'
@@ -50,17 +49,12 @@ function whereItWent(saved: SavedBackup): string {
  * do blindly: the file is checked first, what it holds is shown against what is
  * already here, a safety copy of the current data downloads automatically, and
  * the word REPLACE has to be typed out.
- *
- * What happens with the server afterwards is asked as a plain question rather
- * than decided quietly, because there is no answer that is right in every
- * case and the wrong one is expensive.
  */
 export function BackupPanel() {
   const { user, can } = useSession()
   const [busy, setBusy] = useState(false)
   const [inspection, setInspection] = useState<BackupInspection | null>(null)
   const [mode, setMode] = useState<RestoreMode>('MERGE')
-  const [sync, setSync] = useState<RestoreSyncChoice>('RESYNC')
   const [confirmation, setConfirmation] = useState('')
   const input = useRef<HTMLInputElement>(null)
 
@@ -76,7 +70,6 @@ export function BackupPanel() {
     setInspection(null)
     setConfirmation('')
     setMode('MERGE')
-    setSync('RESYNC')
     if (input.current) input.current.value = ''
   }
 
@@ -151,16 +144,16 @@ export function BackupPanel() {
         await saveBackup(await buildBackup(`${user.name} (before restore)`))
       }
 
-      const outcome = await restoreBackup({ inspection, mode, sync, user })
+      const outcome = await restoreBackup({ inspection, mode, user })
       toast.success(
         `${outcome.written.toLocaleString()} records restored${outcome.skipped > 0 ? `, ${outcome.skipped.toLocaleString()} already here` : ''}.`,
       )
       reset()
 
-      // The signed-in user, the settings, the device's cached identity and the
-      // sync engine's cursor were all read once at boot and may all have just
-      // changed underneath the app. Starting again is the only honest way to
-      // make what is on screen match what is stored.
+      // The signed-in user, the settings and the device's cached identity were
+      // all read once at boot and may all have just changed underneath the
+      // app. Starting again is the only honest way to make what is on screen
+      // match what is stored.
       setTimeout(() => window.location.reload(), 1500)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'The restore could not be completed.')
@@ -223,8 +216,8 @@ export function BackupPanel() {
               keep. It is plain readable JSON, checksummed so a damaged copy is caught rather than trusted.
             </p>
             <p className="mt-2 text-[0.8125rem] text-ink-subtle">
-              It does not contain this terminal&rsquo;s identity or its server password, so the same file can be
-              restored onto any device without two tills ending up pretending to be the same one.
+              It does not contain this terminal&rsquo;s identity, so the same file can be restored onto any device
+              without two tills ending up pretending to be the same one.
             </p>
             <p className="mt-2 flex items-start gap-1.5 text-[0.8125rem] text-warning">
               <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -253,7 +246,7 @@ export function BackupPanel() {
               type="file"
               accept=".json,application/json"
               onChange={(event) => void choose(event.target.files?.[0])}
-              className="mt-3 block w-full text-sm text-ink-muted file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90"
+              className="mt-3 block w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90"
             />
           </section>
         ) : null}
@@ -358,33 +351,6 @@ export function BackupPanel() {
                   title="Replace everything"
                   detail="Empties every table on this device first, then writes the file. Anything recorded since this backup was taken will be gone."
                   danger
-                />
-              </div>
-
-              <h3 className="mt-5 text-sm font-medium text-ink">And then what about the server?</h3>
-              <p className="mt-1 text-[0.8125rem] text-ink-muted">
-                There is no answer that is right in every case, so it is worth a moment.
-              </p>
-
-              <div className="mt-3 space-y-2">
-                <Choice
-                  active={sync === 'RESYNC'}
-                  onClick={() => setSync('RESYNC')}
-                  title="Carry on syncing as normal"
-                  detail="Reads the server again from the beginning. Where the server has a record, the server's copy wins. Right when this device was the thing that broke."
-                />
-                <Choice
-                  active={sync === 'PUSH'}
-                  onClick={() => setSync('PUSH')}
-                  title="This device is the surviving copy"
-                  detail="Sends every restored record up to the server. Only for a server that was lost and is being rebuilt — on a working shop this overwrites the other tills with old data."
-                  danger
-                />
-                <Choice
-                  active={sync === 'STANDALONE'}
-                  onClick={() => setSync('STANDALONE')}
-                  title="Keep this device off the server"
-                  detail="Disconnects from the server so nothing restored can ever be pushed. Right for looking at old books on a spare device."
                 />
               </div>
 

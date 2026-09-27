@@ -86,7 +86,7 @@ export function LedgerScreen() {
             <button
               type="button"
               onClick={() => setQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-ink-subtle hover:bg-surface-sunken"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-subtle hover:bg-surface-sunken"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" aria-hidden="true" />
@@ -107,7 +107,7 @@ export function LedgerScreen() {
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as SaleStatus | 'ALL')}
-              className="h-9 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+              className="h-9 rounded-xl border border-line bg-surface px-2.5 text-sm text-ink focus:border-brand focus:outline-none"
             >
               {STATUSES.map((entry) => (
                 <option key={entry} value={entry}>
@@ -119,7 +119,7 @@ export function LedgerScreen() {
             <select
               value={method}
               onChange={(event) => setMethod(event.target.value as PaymentMethod | 'ALL')}
-              className="h-9 rounded-lg border border-line bg-surface px-2.5 text-sm text-ink focus:border-brand focus:outline-none"
+              className="h-9 rounded-xl border border-line bg-surface px-2.5 text-sm text-ink focus:border-brand focus:outline-none"
             >
               <option value="ALL">Any payment</option>
               {PAYMENT_METHODS.map((entry) => (

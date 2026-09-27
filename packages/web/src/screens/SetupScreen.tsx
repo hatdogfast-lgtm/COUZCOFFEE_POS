@@ -3,12 +3,11 @@ import { Check, Coffee, Loader2, ShieldCheck } from 'lucide-react'
 import { assertPinShape, isWeakPin, PIN_LENGTH } from '@pos/shared'
 import { Button, Card, Field, Input } from '../components/ui/primitives.tsx'
 import brand from '../../brand.config.json'
-import { completeSetup, isSetUp, STARTER_SUMMARY } from '../db/seed.ts'
-import { syncEngine } from '../sync/engine.ts'
+import { completeSetup, STARTER_SUMMARY } from '../db/seed.ts'
 import { StartFromBackup } from './setup/StartFromBackup.tsx'
 import { cn } from '../lib/utils.ts'
 
-type SetupMode = 'NEW' | 'JOIN' | 'BACKUP'
+type SetupMode = 'NEW' | 'BACKUP'
 
 /**
  * First run.
@@ -76,26 +75,19 @@ export function SetupScreen({ onDone }: { onDone: () => void }) {
             <Coffee className="h-7 w-7" aria-hidden="true" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Set up your point of sale</h1>
-          <p className="text-sm text-ink-muted">
-            This takes a minute and happens entirely on this device. You can connect it to a server later.
-          </p>
+          <p className="text-sm text-ink-muted">This takes a minute and happens entirely on this device.</p>
         </header>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <ModeTab active={mode === 'NEW'} onClick={() => setMode('NEW')}>
             New shop
-          </ModeTab>
-          <ModeTab active={mode === 'JOIN'} onClick={() => setMode('JOIN')}>
-            Join a server
           </ModeTab>
           <ModeTab active={mode === 'BACKUP'} onClick={() => setMode('BACKUP')}>
             From a backup
           </ModeTab>
         </div>
 
-        {mode === 'JOIN' ? (
-          <JoinExisting onDone={onDone} />
-        ) : mode === 'BACKUP' ? (
+        {mode === 'BACKUP' ? (
           <StartFromBackup onDone={onDone} />
         ) : (
         <Card className="p-6">
@@ -154,7 +146,7 @@ export function SetupScreen({ onDone }: { onDone: () => void }) {
             >
               <span
                 className={cn(
-                  'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border',
+                  'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border',
                   starterMenu ? 'border-brand bg-brand text-brand-ink' : 'border-line-strong',
                 )}
               >
@@ -212,72 +204,5 @@ function ModeTab({
     >
       {children}
     </button>
-  )
-}
-
-/**
- * Bringing a second till onto an existing shop.
- *
- * The device enrols, pulls the whole business down from the server, and is
- * then ready to sign in with the staff PINs that already exist. It never
- * creates a second business by accident, which is what would happen if the
- * only path on offer were the one above.
- */
-function JoinExisting({ onDone }: { onDone: () => void }) {
-  const [serverUrl, setServerUrl] = useState('http://localhost:4000')
-  const [code, setCode] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function join(): Promise<void> {
-    setBusy(true)
-    setError(null)
-    try {
-      await syncEngine.enrol(serverUrl, code)
-      if (await isSetUp()) {
-        onDone()
-        return
-      }
-      setError(
-        'This device is now enrolled, but the server has no shop set up yet. Set one up on the first till, then try again.',
-      )
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'The server could not be reached.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Card className="space-y-5 p-6">
-      <p className="text-sm text-ink-muted">
-        Point this till at the server your other devices use. It will download the menu, recipes, stock and staff.
-      </p>
-
-      <Field label="Server address" hint="The address the first till is connected to.">
-        <Input
-          value={serverUrl}
-          onChange={(event) => setServerUrl(event.target.value)}
-          placeholder="http://192.168.1.10:4000"
-          autoComplete="url"
-        />
-      </Field>
-
-      <Field label="Enrolment code">
-        <Input
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-          type="password"
-          placeholder="Enrolment code"
-        />
-      </Field>
-
-      {error ? <p className="rounded-xl bg-danger/10 px-3.5 py-2.5 text-sm text-danger">{error}</p> : null}
-
-      <Button size="lg" full onClick={() => void join()} disabled={busy || !serverUrl || !code}>
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-        {busy ? 'Connecting…' : 'Join this shop'}
-      </Button>
-    </Card>
   )
 }

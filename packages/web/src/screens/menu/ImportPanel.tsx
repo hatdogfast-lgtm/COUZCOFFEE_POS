@@ -151,7 +151,7 @@ export function ImportPanel() {
           type="file"
           accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(event) => void choose(event.target.files?.[0])}
-          className="mt-3 block w-full text-sm text-ink-muted file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90"
+          className="mt-3 block w-full text-sm text-ink-muted file:mr-3 file:rounded-full file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-ink hover:file:bg-brand/90"
         />
         {fileName ? (
           <p className="mt-2 text-[0.8125rem] text-ink-subtle">

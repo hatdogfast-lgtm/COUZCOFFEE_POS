@@ -166,7 +166,7 @@ export function SaleSheet({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && !busy && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[94dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay animate-slide-up sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-h-none sm:w-[30rem] sm:rounded-none sm:rounded-l-3xl sm:border-l sm:border-t-0 sm:animate-slide-in-right">
           <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4 pad-safe-top">
             <div className="min-w-0">
@@ -192,7 +192,7 @@ export function SaleSheet({
                   {STATUS_LABELS[sale.status]}
                 </Badge>
               ) : (
-                <Badge tone="online">Completed</Badge>
+                <Badge tone="positive">Completed</Badge>
               )}
               {isRefund ? <Badge tone="warning">This is a refund</Badge> : null}
               {sale.entryMode === 'LUMP_SUM' ? <Badge tone="neutral">Backfilled day</Badge> : null}
@@ -510,7 +510,7 @@ function StockToggle({
     >
       <span
         className={cn(
-          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-[0.625rem]',
+          'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.625rem]',
           checked ? 'border-brand bg-brand text-brand-ink' : 'border-line-strong',
         )}
       >

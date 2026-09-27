@@ -40,12 +40,13 @@ export default {
         mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
         display: ['Fraunces Variable', 'Fraunces', 'Georgia', 'Times New Roman', 'serif'],
       },
-      // Counter: 6px on the things you tap at a rush, a little more on the
-      // things you read. The old 14/18/24px corners read as a consumer app.
+      // A cheerful, rounder counter: cards and sheets read as an app you'd
+      // hand to a customer, not a spreadsheet. Buttons lean on `rounded-full`
+      // directly rather than a fixed radius, so a pill scales with its height.
       borderRadius: {
-        xl: '10px',
-        '2xl': '12px',
-        '3xl': '16px',
+        xl: '14px',
+        '2xl': '20px',
+        '3xl': '28px',
       },
       // Hairlines, not elevation. Only something that floats gets a shadow.
       boxShadow: {

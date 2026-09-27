@@ -223,15 +223,6 @@ describe('checking a file before trusting it', () => {
     expect(lockout?.replaceOnly).toBe(true)
   })
 
-  test('warns when there is unsynced work that a replace would discard', async () => {
-    await seedShop()
-    await commit([created('sales', saleRow('OR-01-000009'))])
-
-    const inspection = await inspect(await buildBackup('Ana'))
-    expect(inspection.unsyncedCount).toBeGreaterThan(0)
-    const warning = inspection.problems.find((problem) => /have not reached the server/i.test(problem.message))
-    expect(warning?.severity).toBe('WARNING')
-  })
 })
 
 describe('restoring', () => {
@@ -244,7 +235,7 @@ describe('restoring', () => {
     await commit([created('sales', saleRow('OR-01-000050'))])
     expect(await db.sales.count()).toBe(3)
 
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(await db.sales.count()).toBe(2)
     expect((await db.sales.toArray()).map((row) => row.receiptNo).sort()).toEqual([
@@ -263,7 +254,7 @@ describe('restoring', () => {
     const edited = { ...saleRow('OR-01-000001'), id: salesIn(file)[0]!.id, total: fromDecimal(777) }
     await db.sales.put(edited as Sale)
 
-    const outcome = await restoreBackup({ inspection, mode: 'MERGE', sync: 'RESYNC', user: USER })
+    const outcome = await restoreBackup({ inspection, mode: 'MERGE', user: USER })
 
     // Settings and the user were never cleared, so only the missing sale is new.
     expect(outcome.written).toBe(1)
@@ -272,30 +263,21 @@ describe('restoring', () => {
     expect((await db.sales.get(edited.id))?.total).toBe(fromDecimal(777))
   })
 
-  test('does not queue anything for the server unless asked', async () => {
+  test('leaves only its own audit entry behind', async () => {
     await seedShop()
     const inspection = await inspect(await buildBackup('Ana'))
 
-    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
-    expect(outcome.queuedForServer).toBe(0)
-    // Only the audit entry recording the restore itself is queued.
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
+    // Nothing about a restore itself is queued beyond the entry recording it.
     const queued = await db.outbox.toArray()
     expect(queued.every((entry) => entry.entity === 'auditLogs')).toBe(true)
-  })
-
-  test('queues everything when this device is the surviving copy', async () => {
-    await seedShop()
-    const inspection = await inspect(await buildBackup('Ana'))
-
-    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', sync: 'PUSH', user: USER })
-    expect(outcome.queuedForServer).toBe(4)
   })
 
   test('records the restore in the audit trail, and it survives the wipe', async () => {
     await seedShop()
     const inspection = await inspect(await buildBackup('Ana'))
 
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     const logs = await db.auditLogs.toArray()
     expect(logs.map((log) => log.action)).toContain('BACKUP_RESTORED')
@@ -308,7 +290,7 @@ describe('restoring', () => {
     const inspection = await inspect(file)
 
     await expect(
-      restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER }),
+      restoreBackup({ inspection, mode: 'REPLACE', user: USER }),
     ).rejects.toThrow(/did not pass its checks/i)
   })
 })
@@ -324,7 +306,7 @@ describe('numbering after a restore', () => {
     await clearBusinessData()
     await writeMeta(META_KEYS.receiptCounter, 1)
 
-    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(outcome.nextReceiptNumber).toBe(501)
     expect(await readMeta(META_KEYS.receiptCounter, 0)).toBe(501)
@@ -337,7 +319,7 @@ describe('numbering after a restore', () => {
     const inspection = await inspect(await buildBackup('Ana'))
 
     await writeMeta(META_KEYS.receiptCounter, 7)
-    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     // 9000 belongs to till ZZ and cannot collide with this one.
     expect(outcome.nextReceiptNumber).toBe(7)
@@ -348,7 +330,7 @@ describe('numbering after a restore', () => {
     const inspection = await inspect(await buildBackup('Ana'))
 
     await writeMeta(META_KEYS.receiptCounter, 4242)
-    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    const outcome = await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(outcome.nextReceiptNumber).toBe(4242)
   })
@@ -359,7 +341,7 @@ describe('numbering after a restore', () => {
     await writeMeta(META_KEYS.queueDate, '2020-01-01')
     await writeMeta(META_KEYS.queueCounter, 88)
 
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(await readMeta(META_KEYS.queueDate, 'unset')).toBe('')
     expect(await readMeta(META_KEYS.queueCounter, 0)).toBe(1)
@@ -367,22 +349,12 @@ describe('numbering after a restore', () => {
 })
 
 describe('the state a restore leaves behind', () => {
-  test('asks the server again from the beginning', async () => {
-    await seedShop()
-    const inspection = await inspect(await buildBackup('Ana'))
-    await writeMeta(META_KEYS.cursor, 9_999)
-
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
-
-    expect(await readMeta(META_KEYS.cursor, -1)).toBe(0)
-  })
-
   test('marks the device as set up so the starter menu is not seeded over the top', async () => {
     await seedShop()
     const inspection = await inspect(await buildBackup('Ana'))
     await writeMeta(META_KEYS.seeded, false)
 
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(await readMeta(META_KEYS.seeded, false)).toBe(true)
   })
@@ -394,7 +366,7 @@ describe('the state a restore leaves behind', () => {
 
     // This device has had no migrations; the restored data has had one.
     await writeMeta(META_KEYS.migrationsApplied, [])
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(await readMeta<string[]>(META_KEYS.migrationsApplied, [])).toEqual([
       '2026-08-30-remove-sweetness',
@@ -406,7 +378,7 @@ describe('the state a restore leaves behind', () => {
     await writeMeta(META_KEYS.migrationsApplied, ['2099-from-the-future'])
     const inspection = await inspect(await buildBackup('Ana'))
 
-    await restoreBackup({ inspection, mode: 'REPLACE', sync: 'RESYNC', user: USER })
+    await restoreBackup({ inspection, mode: 'REPLACE', user: USER })
 
     expect(await readMeta<string[]>(META_KEYS.migrationsApplied, [])).toEqual([])
   })

@@ -210,7 +210,7 @@ export function IngredientEditor({
   return (
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-black/45 animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-ink/40 backdrop-blur-[2px] animate-fade-in" />
         <Dialog.Content className="fixed inset-x-0 bottom-0 z-50 flex max-h-[92dvh] flex-col rounded-t-3xl border-t border-line bg-surface shadow-overlay animate-slide-up sm:inset-0 sm:m-auto sm:h-fit sm:max-w-md sm:rounded-3xl sm:border sm:animate-scale-in">
           <header className="flex items-center justify-between border-b border-line px-5 py-4">
             <Dialog.Title className="text-lg font-semibold text-ink">

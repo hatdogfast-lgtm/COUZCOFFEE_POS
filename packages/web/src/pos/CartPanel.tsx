@@ -64,12 +64,12 @@ export function CartPanel({
         <div className="flex items-center gap-2">
           <Micro className="text-ink">Current order</Micro>
           {counts.cups > 0 ? (
-            <span className="figure rounded-sm bg-brand-soft px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand">
+            <span className="figure rounded-full bg-brand-soft px-1.5 py-0.5 text-[0.6875rem] font-semibold text-brand">
               {counts.cups} {counts.cups === 1 ? 'cup' : 'cups'}
             </span>
           ) : null}
           {counts.snacks > 0 ? (
-            <span className="figure rounded-sm bg-surface-sunken px-1.5 py-0.5 text-[0.6875rem] font-semibold text-ink-muted">
+            <span className="figure rounded-full bg-surface-sunken px-1.5 py-0.5 text-[0.6875rem] font-semibold text-ink-muted">
               {counts.snacks} {counts.snacks === 1 ? 'snack' : 'snacks'}
             </span>
           ) : null}
@@ -153,18 +153,18 @@ export function CartPanel({
                     <button
                       type="button"
                       onClick={() => cart.setLoyaltyQty(line.id, 1)}
-                      className="ml-auto flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1.5 text-xs font-medium text-ink-subtle transition-colors press hover:text-ink"
+                      className="ml-auto flex items-center gap-1.5 rounded-full border border-line-strong px-2.5 py-1.5 text-xs font-medium text-ink-subtle transition-colors press hover:text-ink"
                     >
                       <Gift className="h-3.5 w-3.5" aria-hidden="true" />
                       Claim free
                     </button>
                   ) : (
-                    <span className="ml-auto flex items-center gap-1 rounded-md border border-positive bg-positive/10 py-0.5 pl-2 pr-0.5">
+                    <span className="ml-auto flex items-center gap-1 rounded-full border border-positive bg-positive/10 py-0.5 pl-2 pr-0.5">
                       <Gift className="h-3.5 w-3.5 text-positive" aria-hidden="true" />
                       <button
                         type="button"
                         onClick={() => cart.setLoyaltyQty(line.id, (line.loyaltyFreeQty ?? 0) - 1)}
-                        className="rounded-sm p-1 text-positive hover:bg-positive/15"
+                        className="rounded-full p-1 text-positive hover:bg-positive/15"
                         aria-label="Claim one fewer"
                       >
                         <Minus className="h-3 w-3" aria-hidden="true" />
@@ -176,7 +176,7 @@ export function CartPanel({
                         type="button"
                         onClick={() => cart.setLoyaltyQty(line.id, (line.loyaltyFreeQty ?? 0) + 1)}
                         disabled={(line.loyaltyFreeQty ?? 0) >= line.quantity}
-                        className="rounded-sm p-1 text-positive hover:bg-positive/15 disabled:opacity-40"
+                        className="rounded-full p-1 text-positive hover:bg-positive/15 disabled:opacity-40"
                         aria-label="Claim one more"
                       >
                         <Plus className="h-3 w-3" aria-hidden="true" />
@@ -216,7 +216,7 @@ export function CartPanel({
                 type="button"
                 onClick={() => cart.setOrderType(entry.code)}
                 className={cn(
-                  'rounded-md border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors press',
+                  'rounded-full border px-3 py-1.5 text-[0.8125rem] font-medium transition-colors press',
                   cart.cart.orderType === entry.code
                     ? 'border-brand bg-brand-soft text-ink'
                     : 'border-line-strong text-ink-muted hover:text-ink',
@@ -256,7 +256,7 @@ export function CartPanel({
                     <button
                       type="button"
                       onClick={() => cart.removeDiscount(discount.id)}
-                      className="rounded-sm p-0.5 text-ink-subtle hover:bg-surface-sunken"
+                      className="rounded-full p-0.5 text-ink-subtle hover:bg-surface-sunken"
                       aria-label={`Remove ${discount.label}`}
                     >
                       <X className="h-3.5 w-3.5" aria-hidden="true" />

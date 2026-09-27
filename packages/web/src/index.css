@@ -85,28 +85,28 @@
     --ink-muted: 205 191 175;
     --ink-subtle: 176 160 143;
 
-    --brand: 214 168 110; /* Caramel, desaturated  #D6A86E */
+    --brand: 232 148 64; /* Vivid amber - a lit shopfront, not a faded one #E89440 */
     --brand-ink: 36 24 18;
-    --brand-soft: 58 42 30;
-    --brand-light: 201 151 106;
+    --brand-soft: 68 46 24;
+    --brand-light: 235 168 96;
 
-    --accent: 227 190 142; /* #E3BE8E */
+    --accent: 240 158 74; /* #F09E4A */
     --accent-ink: 36 24 18;
 
     --chrome: 59 36 22; /* Deep Espresso, the same bar in both themes */
     --chrome-ink: 248 243 234;
     --chrome-muted: 201 185 166;
 
-    --chart: 214 168 110;
+    --chart: 232 148 64;
     --chart-track: 62 46 36;
 
-    --positive: 157 190 144;
-    --positive-ink: 36 24 18; /* light Matcha carries dark ink */
+    --positive: 88 214 150; /* Vivid emerald  #58D696 */
+    --positive-ink: 20 36 28;
     --warning: 221 170 72;
     --honey: 221 170 72;
     --honey-ink: 36 24 18;
-    --danger: 232 150 142;
-    --danger-ink: 42 14 12;
+    --danger: 240 120 104; /* Vivid coral-red #F07868 */
+    --danger-ink: 46 14 10;
   }
 
   * {
@@ -162,11 +162,11 @@
 @layer components {
   /* A card is told from the page by its edge, not its fill or a shadow. */
   .card {
-    @apply rounded-lg border border-line bg-surface;
+    @apply rounded-2xl border border-line bg-surface;
   }
 
   .panel {
-    @apply rounded-lg border border-line bg-surface;
+    @apply rounded-2xl border border-line bg-surface;
   }
 
   /* Touch targets: 44px is the floor on a tablet a barista uses one-handed. */
@@ -176,6 +176,11 @@
 
   .press {
     @apply transition-transform duration-100 ease-swift active:scale-[0.97];
+  }
+
+  /* A tile you can tap: lifts a hair on hover, settles back on press. */
+  .lift {
+    @apply transition-[transform,box-shadow] duration-200 ease-swift hover:-translate-y-0.5 hover:shadow-raised;
   }
 
   /* The letterspaced micro-label: section headings, chips, the odd caption. */

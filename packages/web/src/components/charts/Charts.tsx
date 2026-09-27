@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { Glow } from '../ui/primitives.tsx'
 import { cn } from '../../lib/utils.ts'
 
 /**
@@ -108,7 +109,7 @@ export function ColumnChart({
                 >
                   {/* A full-height hit area, so the target is far bigger than
                       the mark it selects. */}
-                  <div className="absolute inset-0 rounded-sm transition-colors group-hover:bg-ink/[0.04] group-focus:bg-ink/[0.04]" />
+                  <div className="absolute inset-0 rounded-xl transition-colors group-hover:bg-ink/[0.04] group-focus:bg-ink/[0.04]" />
 
                   <div
                     className={cn(
@@ -119,7 +120,7 @@ export function ColumnChart({
                   />
 
                   {isHovered ? (
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs shadow-raised">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 -translate-x-1/2 whitespace-nowrap rounded-2xl border border-line bg-surface px-2.5 py-1.5 text-xs shadow-raised">
                       <span className="block font-medium text-ink tabular">{exact(point.value)}</span>
                       <span className="block text-ink-subtle">{point.label}</span>
                       {point.secondary ? (
@@ -257,7 +258,8 @@ export function HeroFigure({
   detail?: ReactNode
 }) {
   return (
-    <div>
+    <div className="relative overflow-hidden">
+      <Glow className="-left-6 -top-10 -z-10" />
       <p className="text-[0.8125rem] text-ink-muted">{label}</p>
       <p className="text-[2.75rem] font-semibold leading-none tracking-tight text-ink">{value}</p>
       {detail ? <div className="mt-1.5 text-sm text-ink-muted">{detail}</div> : null}

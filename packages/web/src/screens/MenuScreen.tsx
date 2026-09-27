@@ -149,7 +149,7 @@ function ProductsPanel() {
             <button
               type="button"
               onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-ink-subtle hover:bg-surface-sunken"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-ink-subtle hover:bg-surface-sunken"
               aria-label="Clear search"
             >
               <X className="h-4 w-4" aria-hidden="true" />
